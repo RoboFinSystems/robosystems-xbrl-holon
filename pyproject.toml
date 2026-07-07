@@ -1,0 +1,96 @@
+[project]
+name = "robosystems-xbrl-holon"
+version = "0.1.0"
+description = "CLI that converts SEC XBRL filings into holon.jsonld documents"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    {name = "RFS LLC"},
+]
+license = {text = "MIT"}
+keywords = ["xbrl", "sec", "edgar", "financial", "cli", "holon", "jsonld"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Framework :: Pydantic",
+    "Framework :: Pydantic :: 2",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business :: Financial",
+    "Topic :: Office/Business :: Financial :: Accounting",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Utilities",
+    "Typing :: Typed",
+]
+dependencies = [
+    "arelle-release",
+    "httpx>=0.28",
+    "pydantic>=2.11",
+    "rdflib",
+    "pyshacl",
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+dev = [
+    "basedpyright>=1.21",
+    "ruff>=0.12",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.26",
+    "build>=1.0",
+    "twine>=5.0",
+]
+
+[project.scripts]
+holon = "robosystems_xbrl_holon.cli:main"
+
+[project.urls]
+Repository = "https://github.com/RoboFinSystems/robosystems-xbrl-holon"
+Homepage = "https://github.com/RoboFinSystems/robosystems-xbrl-holon#readme"
+"Bug Tracker" = "https://github.com/RoboFinSystems/robosystems-xbrl-holon/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["robosystems_xbrl_holon"]
+
+# Keep internal dev tooling out of the sdist uploaded to PyPI. Hatchling
+# defaults to "everything not in .gitignore", which would drag along
+# `.claude/`, `.vscode/`, `.githooks/`, and other repo-local config. The
+# wheel target above is unaffected — it only includes the package dir.
+[tool.hatch.build.targets.sdist]
+include = [
+    "/robosystems_xbrl_holon",
+    "/tests",
+    "/README.md",
+    "/LICENSE",
+    "/pyproject.toml",
+    "/pytest.ini",
+    "/ruff.toml",
+]
+
+[tool.basedpyright]
+include = ["robosystems_xbrl_holon"]
+exclude = ["tests", "robosystems_xbrl_holon/serialize/_kernel", "robosystems_xbrl_holon/_vendor"]
+extraPaths = ["."]
+pythonVersion = "3.13"
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "standard"
+reportAttributeAccessIssue = "none"
+reportArgumentType = "none"
+reportGeneralTypeIssues = "none"
+reportOptionalMemberAccess = "none"
+reportReturnType = "none"
+reportInvalidTypeForm = "none"
+reportMissingImports = "none"
