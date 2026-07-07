@@ -15,6 +15,7 @@ from typing import Any
 from robosystems_xbrl_holon.model import (
   Arc,
   Concept,
+  DimQualifier,
   EntityIdentity,
   FilingMeta,
   Network,
@@ -23,9 +24,12 @@ from robosystems_xbrl_holon.model import (
   XbrlFact,
   XbrlModel,
 )
-from robosystems_xbrl_holon.serialize import classify_network, to_holon
-from robosystems_xbrl_holon.serialize._kernel.jsonld import build_graph, shacl_report
-from robosystems_xbrl_holon.serialize.holon import build_bundle
+from robosystems_xbrl_holon.serialize import (
+  build_holon_graph,
+  classify_network,
+  to_holon,
+)
+from robosystems_xbrl_holon.serialize._kernel.jsonld import shacl_report
 
 
 def _model() -> XbrlModel:
@@ -188,17 +192,120 @@ def test_to_holon_information_block_and_facts() -> None:
   assert ib_nodes, "expected at least one rs:InformationBlock"
 
   fact_nodes = [n for n in nodes if "rs:Fact" in _types(n)]
-  # Only the two numeric facts survive; the text fact is shed.
-  assert len(fact_nodes) == 2
-  assert all("factSet" in n for n in fact_nodes), (
-    "every projected fact should carry rs:factSet"
+  # Full fidelity: all three facts survive — two numeric + one text (dei).
+  assert len(fact_nodes) == 3
+  numeric = [n for n in fact_nodes if "numericValue" in n]
+  text = [n for n in fact_nodes if "stringValue" in n]
+  assert len(numeric) == 2
+  assert len(text) == 1
+  # The two balance-sheet line items group into their section's factSet; the
+  # dei text fact belongs to no presentation network, so it carries none.
+  assert all("factSet" in n for n in numeric)
+
+
+def test_holon_graph_shacl_conforms() -> None:
+  # Drift-guard: the flat graph the holon serializes from must satisfy the rs:
+  # structural topology (positive Fact/Association/Dimension shapes + banned
+  # dialects), now including text facts and dimensional nodes.
+  result = shacl_report(build_holon_graph(_model()))
+  assert result.ran
+  assert result.conforms, result.report
+
+
+def _dim_model() -> XbrlModel:
+  """A concept reported both consolidated and broken down by one segment axis."""
+  filing = FilingMeta(accession="0000000000-24-000002", cik="0001234567", form="10-K")
+  entity = EntityIdentity(cik="0001234567", name="Acme Corp")
+  concepts = {
+    "us-gaap:Revenues": Concept(
+      qname="us-gaap:Revenues",
+      namespace="http://fasb.org/us-gaap/2024-01-31",
+      name="Revenues",
+      period_type="duration",
+      balance="credit",
+      is_numeric=True,
+      item_type="monetaryItemType",
+      pref_label="Revenues",
+    ),
+  }
+  periods = [
+    Period(
+      id="D-2024",
+      period_type="duration",
+      start=date(2024, 1, 1),
+      end=date(2024, 12, 31),
+      duration_type="annual",
+    )
+  ]
+  units = [Unit(id="usd", measure="iso4217:USD")]
+  segment = DimQualifier(
+    axis_qname="us-gaap:StatementBusinessSegmentsAxis",
+    member_qname="acme:WidgetsMember",
+    is_explicit=True,
+    axis_type="segment",
+  )
+  facts = [
+    XbrlFact(
+      id="fc",  # consolidated total (no dimensions)
+      concept_qname="us-gaap:Revenues",
+      period_id="D-2024",
+      unit_id="usd",
+      entity_cik="0001234567",
+      numeric_value=1000.0,
+      value_kind="numeric",
+    ),
+    XbrlFact(
+      id="fd",  # one segment's breakdown (dimensional)
+      concept_qname="us-gaap:Revenues",
+      period_id="D-2024",
+      unit_id="usd",
+      entity_cik="0001234567",
+      dims=[segment],
+      numeric_value=600.0,
+      value_kind="numeric",
+    ),
+  ]
+  networks = [
+    Network(
+      role_uri="http://acme.com/role/Income",
+      definition="Consolidated Statements of Operations",
+      kind="presentation",
+      arcs=[Arc(from_qname="us-gaap:Revenues", to_qname="us-gaap:Revenues", order=1.0)],
+    )
+  ]
+  return XbrlModel(
+    filing=filing,
+    entity=entity,
+    concepts=concepts,
+    periods=periods,
+    units=units,
+    facts=facts,
+    networks=networks,
   )
 
 
-def test_bundle_shacl_conforms() -> None:
-  # Drift-guard: the exact bundle the holon serializes from must satisfy the
-  # rs: structural topology (positive Fact/Association shapes + banned dialects).
-  bundle = build_bundle(_model())
-  result = shacl_report(build_graph(bundle))
-  assert result.ran
-  assert result.conforms, result.report
+def test_dimensional_facts_emitted_and_partitioned() -> None:
+  model = _dim_model()
+
+  # SHACL: the dimensional node satisfies rs:DimensionShape.
+  assert shacl_report(build_holon_graph(model)).conforms
+
+  doc = json.loads(to_holon(model))
+  nodes = _all_nodes(doc)
+
+  dim_nodes = [n for n in nodes if "rs:Dimension" in _types(n)]
+  assert len(dim_nodes) == 1, "one rs:Dimension for the single (axis, member)"
+  assert "axis" in dim_nodes[0] and "member" in dim_nodes[0]
+
+  fact_nodes = [n for n in nodes if "rs:Fact" in _types(n)]
+  assert len(fact_nodes) == 2
+  dimensional = [n for n in fact_nodes if "dimension" in n]
+  assert len(dimensional) == 1, "only the breakdown fact carries rs:dimension"
+
+  # The rs:Dimension node must land in the #scene graph (alongside its facts).
+  scene = next(
+    e["@graph"]
+    for e in doc["@graph"]
+    if isinstance(e, dict) and str(e.get("@id", "")).endswith("#scene")
+  )
+  assert any("rs:Dimension" in _types(n) for n in scene)

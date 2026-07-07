@@ -32,6 +32,16 @@ class FilingRef:
   is_inline: bool
 
 
+@dataclass
+class CompanyInfo:
+  """Filer identity from the submissions header (not from the XBRL instance)."""
+
+  cik: str
+  name: str | None
+  ein: str | None
+  ticker: str | None
+
+
 class EdgarClient:
   """Synchronous EDGAR client. One HTTP session, one rate limiter."""
 
@@ -134,6 +144,26 @@ class EdgarClient:
         )
       )
     return refs
+
+  def company_info(self, cik: str) -> CompanyInfo:
+    """Filer name / EIN / primary ticker from the submissions header.
+
+    These identify the reporting entity and come from EDGAR metadata, not the
+    XBRL instance (which only carries the CIK). Best-effort: unknown fields are
+    ``None``.
+    """
+    padded_cik = f"{int(cik):0>10}"
+    main = self._get_submissions(f"CIK{padded_cik}.json")
+    tickers = main.get("tickers") or []
+    ticker = str(tickers[0]) if isinstance(tickers, list) and tickers else None
+    name = main.get("name")
+    ein = main.get("ein")
+    return CompanyInfo(
+      cik=padded_cik,
+      name=str(name) if name else None,
+      ein=str(ein) if ein else None,
+      ticker=ticker,
+    )
 
   def get_filing_ref(self, cik: str, accession: str) -> FilingRef:
     """Return the :class:`FilingRef` for one accession.

@@ -57,8 +57,20 @@ _DEI_FISCAL_PERIOD = "dei:DocumentFiscalPeriodFocus"
 _DEI_FISCAL_YEAR_END = "dei:CurrentFiscalYearEndDate"
 
 
-def to_xbrl_model(mx: ModelXbrl, filing: FilingMeta) -> XbrlModel:
-  """Convert a loaded ``ModelXbrl`` into the neutral single-filing model."""
+def to_xbrl_model(
+  mx: ModelXbrl,
+  filing: FilingMeta,
+  *,
+  entity_name: str | None = None,
+  entity_ein: str | None = None,
+  entity_ticker: str | None = None,
+) -> XbrlModel:
+  """Convert a loaded ``ModelXbrl`` into the neutral single-filing model.
+
+  ``entity_name`` / ``entity_ein`` / ``entity_ticker`` come from the EDGAR
+  submissions header (the XBRL instance carries only the CIK); pass them when
+  available so the reporting entity is fully identified.
+  """
   report_uri = filing.accession
   main_cik = _normalize_cik(filing.cik)
 
@@ -92,12 +104,11 @@ def to_xbrl_model(mx: ModelXbrl, filing: FilingMeta) -> XbrlModel:
       if month is not None:
         fiscal_year_end_month = month
 
-    # Concept (deduped by qname).
-    if qname_str not in concepts:
-      concepts[qname_str] = _make_concept(mx, concept)
-      concept_ns = getattr(concept.qname, "namespaceURI", None)
-      if concept_ns:
-        namespaces.add(concept_ns)
+    # Concept (deduped by qname). Full DTS coverage is completed below from
+    # dimension members (in _make_dims) and network endpoints (in
+    # _make_networks), so abstract headers and axis/member/domain/hypercube
+    # concepts also get a Concept with labels + flags.
+    _ensure_concept(mx, concepts, namespaces, concept)
 
     # Period (deduped by content-derived id). Skip facts with invalid dates.
     period = _make_period(f.context)
@@ -136,13 +147,17 @@ def to_xbrl_model(mx: ModelXbrl, filing: FilingMeta) -> XbrlModel:
         period_id=period.id,
         unit_id=unit_ref,
         entity_cik=norm_cik,
-        dims=_make_dims(f.context),
+        dims=_make_dims(f.context, mx, concepts, namespaces),
         value_str=str(f.value) if f.value is not None else None,
         numeric_value=numeric_value,
         decimals=(str(f.decimals) if (is_numeric and f.decimals is not None) else None),
         value_kind="numeric" if is_numeric else "text",
       )
     )
+
+  # Networks last: their arc endpoints (abstract headers, subtotals, hypercube
+  # wiring) complete the concept coverage and add their namespaces.
+  networks = _make_networks(mx, concepts, namespaces)
 
   updated_filing = filing.model_copy(
     update={
@@ -156,6 +171,10 @@ def to_xbrl_model(mx: ModelXbrl, filing: FilingMeta) -> XbrlModel:
   entity = EntityIdentity(
     cik=main_cik,
     scheme=entity_scheme or "http://www.sec.gov/CIK",
+    name=entity_name,
+    legal_name=entity_name,
+    ein=entity_ein,
+    ticker=entity_ticker,
   )
 
   return XbrlModel(
@@ -165,8 +184,34 @@ def to_xbrl_model(mx: ModelXbrl, filing: FilingMeta) -> XbrlModel:
     periods=list(periods.values()),
     units=list(units.values()),
     facts=facts,
-    networks=_make_networks(mx),
+    networks=networks,
   )
+
+
+def _ensure_concept(
+  mx: ModelXbrl,
+  concepts: dict[str, Concept],
+  namespaces: set[str],
+  concept: Any,
+) -> None:
+  """Register a concept (deduped by qname) with its namespace, if valid.
+
+  The single collection point for every concept the slice touches — reported
+  facts, dimension axes/members, and network-arc endpoints — so DTS coverage is
+  complete rather than fact-driven.
+  """
+  if concept is None:
+    return
+  qname = getattr(concept, "qname", None)
+  if qname is None:
+    return
+  qname_str = str(qname)
+  if qname_str in concepts:
+    return
+  concepts[qname_str] = _make_concept(mx, concept)
+  concept_ns = getattr(qname, "namespaceURI", None)
+  if concept_ns:
+    namespaces.add(concept_ns)
 
 
 def _make_concept(mx: ModelXbrl, concept: Any) -> Concept:
@@ -190,6 +235,11 @@ def _make_concept(mx: ModelXbrl, concept: Any) -> Concept:
     is_abstract=bool(getattr(concept, "isAbstract", False)),
     is_numeric=bool(getattr(concept, "isNumeric", False)),
     is_textblock=bool(getattr(concept, "isTextBlock", False)),
+    is_hypercube_item=bool(getattr(concept, "isHypercubeItem", False)),
+    is_dimension_item=bool(getattr(concept, "isDimensionItem", False)),
+    is_domain_member=bool(getattr(concept, "isDomainMember", False)),
+    is_shares=bool(getattr(concept, "isShares", False)),
+    is_integer=bool(getattr(concept, "isInteger", False)),
     substitution_group=str(subgroup) if subgroup is not None else None,
     item_type=type_qname.localName if type_qname is not None else None,
     pref_label=pref_label,
@@ -248,6 +298,7 @@ def _make_period(context: Any) -> Period | None:
       period_type="duration",
       start=start,
       end=end,
+      duration_type=_duration_type(start, end),
     )
   if context.isForeverPeriod:
     return Period(
@@ -286,23 +337,51 @@ def _measure_token(qname: Any) -> tuple[str, str]:
   return token, uri
 
 
-def _make_dims(context: Any) -> list[DimQualifier]:
-  """Extract explicit + typed dimensional qualifiers from a fact context."""
+def _make_dims(
+  context: Any,
+  mx: ModelXbrl,
+  concepts: dict[str, Concept],
+  namespaces: set[str],
+) -> list[DimQualifier]:
+  """Extract explicit + typed dimensional qualifiers from a fact context.
+
+  Registers each axis (and explicit member) as a full :class:`Concept` so the
+  serializer can label them, and records segment-vs-scenario per dimension.
+  """
+  seg = set(getattr(context, "segDimValues", {}) or {})
+  scen = set(getattr(context, "scenDimValues", {}) or {})
   dims: list[DimQualifier] = []
   for dim, mem in context.qnameDims.items():
+    _ensure_concept(mx, concepts, namespaces, getattr(mem, "dimension", None))
+    member_qname: str | None = None
+    if mem.isExplicit:
+      member = getattr(mem, "member", None)
+      _ensure_concept(mx, concepts, namespaces, member)
+      if member is not None and member.qname is not None:
+        member_qname = str(member.qname)
     dims.append(
       DimQualifier(
         axis_qname=str(dim),
-        member_qname=str(mem.member.qname) if mem.isExplicit else None,
+        member_qname=member_qname,
         typed_value=mem.stringValue if mem.isTyped else None,
         is_explicit=bool(mem.isExplicit),
+        axis_type="segment" if dim in seg else "scenario" if dim in scen else None,
       )
     )
   return dims
 
 
-def _make_networks(mx: ModelXbrl) -> list[Network]:
-  """Enumerate presentation/calculation/definition networks from base sets."""
+def _make_networks(
+  mx: ModelXbrl,
+  concepts: dict[str, Concept],
+  namespaces: set[str],
+) -> list[Network]:
+  """Enumerate presentation/calculation/definition networks from base sets.
+
+  Registers every arc endpoint as a :class:`Concept` (completing DTS coverage
+  for abstract headers, subtotals, and dimensional wiring) and stamps each arc
+  with its specific ``arcrole`` so definition networks stay distinguishable.
+  """
   networks: list[Network] = []
   seen: set[tuple[str, str]] = set()
 
@@ -333,11 +412,14 @@ def _make_networks(mx: ModelXbrl) -> list[Network]:
       to = r.toModelObject
       if frm is None or to is None or frm.qname is None or to.qname is None:
         continue
+      _ensure_concept(mx, concepts, namespaces, frm)
+      _ensure_concept(mx, concepts, namespaces, to)
       weight = r.weight if is_calc else None
       arcs.append(
         Arc(
           from_qname=str(frm.qname),
           to_qname=str(to.qname),
+          arcrole=arcrole,
           order=float(r.order) if r.order is not None else None,
           weight=float(weight) if weight is not None else None,
           preferred_label=getattr(r, "preferredLabel", None),
@@ -401,6 +483,22 @@ def _normalize_cik(raw: Any) -> str:
 def _period_type(value: Any) -> str | None:
   """Guard an Arelle period type to the model's allowed literals."""
   return value if value in ("instant", "duration", "forever") else None
+
+
+def _duration_type(start: date, end: date) -> str | None:
+  """Bucket a duration span into annual / quarterly (else ``None``).
+
+  ``end`` is already the inclusive reported end (rolled back one day), so the
+  span is ``end - start``. A 52/53-week fiscal year lands ~364-371 days; a
+  fiscal quarter ~13 weeks. 6-/9-month year-to-date spans deliberately fall
+  through to ``None`` — they are neither annual nor quarterly.
+  """
+  days = (end - start).days
+  if 340 <= days <= 380:
+    return "annual"
+  if 80 <= days <= 100:
+    return "quarterly"
+  return None
 
 
 def _balance(value: Any) -> str | None:

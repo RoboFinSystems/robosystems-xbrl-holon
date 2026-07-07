@@ -140,17 +140,31 @@ CANONICAL_CONTEXT: dict = {
   "factSet": {"@id": f"{RS_VOCAB}factSet", "@type": "@id"},
   "structure": {"@id": f"{RS_VOCAB}structure", "@type": "@id"},
   "numericValue": {"@id": f"{RS_VOCAB}numericValue", "@type": "xsd:decimal"},
+  # v1.1 — non-numeric (text / textBlock) fact value + numeric/nonnumeric kind.
+  # rs: has no XBRL predicate for a string-valued fact; the graph carries it as
+  # Fact.value + Fact.fact_type, mirrored here so disclosures survive the slice.
+  "stringValue": {"@id": f"{RS_VOCAB}stringValue"},
+  "factType": {"@id": f"{RS_VOCAB}factType"},
   "decimals": {"@id": f"{RS_VOCAB}decimals"},
   # Period node — period kind uses XBRL's instant/duration vocabulary
   "instant": {"@id": "xbrli:instant", "@type": "xsd:date"},
   "startDate": {"@id": "xbrli:startDate", "@type": "xsd:date"},
   "endDate": {"@id": "xbrli:endDate", "@type": "xsd:date"},
   "calendarPeriodKey": {"@id": f"{RS_VOCAB}calendarPeriodKey"},
+  # v1.1 — deterministic annual/quarterly bucket for duration periods.
+  "durationType": {"@id": f"{RS_VOCAB}durationType"},
   # Unit node
   "measure": {"@id": "xbrli:measure", "@type": "@id"},
-  # Dimension node
-  "axis": {"@id": f"{RS_VOCAB}axis"},
-  "member": {"@id": f"{RS_VOCAB}member"},
+  # Dimension node (v1.1 fidelity layer). rs:axis / rs:member are refined from
+  # reserved string stubs to @id links onto the axis / member rs:Element, so
+  # their labels join in-graph; typed dimensions carry rs:typedValue instead of
+  # a member. rs:axisType records segment vs scenario.
+  "axis": {"@id": f"{RS_VOCAB}axis", "@type": "@id"},
+  "member": {"@id": f"{RS_VOCAB}member", "@type": "@id"},
+  "isExplicit": {"@id": f"{RS_VOCAB}isExplicit", "@type": "xsd:boolean"},
+  "isTyped": {"@id": f"{RS_VOCAB}isTyped", "@type": "xsd:boolean"},
+  "typedValue": {"@id": f"{RS_VOCAB}typedValue"},
+  "axisType": {"@id": f"{RS_VOCAB}axisType"},
   # Entity / report-bundle header (rs: — no XBRL equivalent)
   "scheme": {"@id": f"{RS_VOCAB}scheme", "@type": "@id"},
   "legalName": {"@id": f"{RS_VOCAB}legalName"},

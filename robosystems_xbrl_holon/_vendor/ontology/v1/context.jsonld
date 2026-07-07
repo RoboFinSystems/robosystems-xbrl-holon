@@ -13,7 +13,11 @@
       "@id": "https://robosystems.ai/vocab/associationType"
     },
     "axis": {
-      "@id": "https://robosystems.ai/vocab/axis"
+      "@id": "https://robosystems.ai/vocab/axis",
+      "@type": "@id"
+    },
+    "axisType": {
+      "@id": "https://robosystems.ai/vocab/axisType"
     },
     "balance": {
       "@id": "xbrli:balance"
@@ -38,6 +42,7 @@
       "@id": "https://robosystems.ai/vocab/classifiedAs",
       "@type": "@id"
     },
+    "cm": "https://github.com/seattlemethod/universal/cm#",
     "cm-roles": "http://www.xbrlsite.com/seattlemethod/conceptual-model/cm-roles/roles/",
     "conceptArrangementPattern": {
       "@id": "https://robosystems.ai/vocab/conceptArrangementPattern"
@@ -83,6 +88,9 @@
     },
     "disclosures": "https://robosystems.ai/taxonomy/rs-gaap/disclosures/v1/",
     "documentation": "rdfs:comment",
+    "durationType": {
+      "@id": "https://robosystems.ai/vocab/durationType"
+    },
     "ein": {
       "@id": "https://robosystems.ai/vocab/ein"
     },
@@ -111,6 +119,9 @@
     "factSet": {
       "@id": "https://robosystems.ai/vocab/factSet",
       "@type": "@id"
+    },
+    "factType": {
+      "@id": "https://robosystems.ai/vocab/factType"
     },
     "financialReportPossibleDisclosure": {
       "@id": "https://robosystems.ai/vocab/financialReportPossibleDisclosure",
@@ -143,6 +154,14 @@
     "internalId": {
       "@id": "https://robosystems.ai/vocab/internalId"
     },
+    "isExplicit": {
+      "@id": "https://robosystems.ai/vocab/isExplicit",
+      "@type": "xsd:boolean"
+    },
+    "isTyped": {
+      "@id": "https://robosystems.ai/vocab/isTyped",
+      "@type": "xsd:boolean"
+    },
     "iso4217": "http://www.xbrl.org/2003/iso4217#",
     "label": "rdfs:label",
     "labelLanguage": {
@@ -160,7 +179,8 @@
       "@type": "@id"
     },
     "member": {
-      "@id": "https://robosystems.ai/vocab/member"
+      "@id": "https://robosystems.ai/vocab/member",
+      "@type": "@id"
     },
     "mode": {
       "@id": "https://robosystems.ai/vocab/mode"
@@ -287,6 +307,9 @@
     "statementType": {
       "@id": "https://robosystems.ai/vocab/statementType"
     },
+    "stringValue": {
+      "@id": "https://robosystems.ai/vocab/stringValue"
+    },
     "structure": {
       "@id": "https://robosystems.ai/vocab/structure",
       "@type": "@id"
@@ -310,6 +333,9 @@
       "@type": "@id"
     },
     "trait": "https://robosystems.ai/taxonomy/fac-traits/v1/",
+    "typedValue": {
+      "@id": "https://robosystems.ai/vocab/typedValue"
+    },
     "unit": {
       "@id": "https://robosystems.ai/vocab/unit",
       "@type": "@id"

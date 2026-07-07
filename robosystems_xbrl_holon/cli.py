@@ -36,6 +36,7 @@ def _build_one(
 ) -> XbrlModel:
   """Fetch one filing, parse it, and write its holon to ``out_path``."""
   ref = client.get_filing_ref(cik, accession)
+  info = client.company_info(cik)
   with tempfile.TemporaryDirectory() as tmp:
     target = download_filing(client, cik, accession, Path(tmp))
     mx = load_model(target, cache_dir=cache_dir)
@@ -46,7 +47,13 @@ def _build_one(
         form=ref.form or None,
         filing_date=_parse_date(ref.filing_date),
       )
-      model = to_xbrl_model(mx, filing)
+      model = to_xbrl_model(
+        mx,
+        filing,
+        entity_name=info.name,
+        entity_ein=info.ein,
+        entity_ticker=info.ticker,
+      )
     finally:
       close(mx.modelManager.cntlr)
   out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -67,6 +74,22 @@ def _cmd_build(args: argparse.Namespace) -> int:
   client = EdgarClient(config=config)
   out = Path(args.out)
   _build_one(client, args.cik, args.accno, out, config.arelle_cache_dir)
+  return 0
+
+
+def _cmd_query(args: argparse.Namespace) -> int:
+  from .query import fact_grid, load_holon
+
+  graph = load_holon(args.infile)
+  rows = fact_grid(
+    graph,
+    elements=args.element or None,
+    periods=args.period or None,
+    period_type=args.period_type,
+  )
+  for r in rows:
+    print(f"{r.end_date or '':<12} {r.qname:<55} {r.value:>20,.4f}  {r.measure or ''}")
+  print(f"({len(rows)} consolidated facts)", file=sys.stderr)
   return 0
 
 
@@ -112,6 +135,24 @@ def build_parser() -> argparse.ArgumentParser:
   )
   f.add_argument("-o", "--out", default=".", help="Output directory.")
   f.set_defaults(func=_cmd_fetch)
+
+  q = sub.add_parser(
+    "query", help="Query consolidated facts in a holon.jsonld (in-memory SPARQL)."
+  )
+  q.add_argument("--in", dest="infile", required=True, help="Path to a holon.jsonld.")
+  q.add_argument(
+    "--element", action="append", help="Element qname filter, e.g. us-gaap:Assets."
+  )
+  q.add_argument(
+    "--period", action="append", help="Period end date YYYY-MM-DD (repeatable)."
+  )
+  q.add_argument(
+    "--period-type",
+    choices=["instant", "annual", "quarterly"],
+    dest="period_type",
+    help="Restrict to instant / annual-duration / quarterly-duration facts.",
+  )
+  q.set_defaults(func=_cmd_query)
   return parser
 
 
