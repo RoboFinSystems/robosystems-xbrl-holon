@@ -28,6 +28,7 @@ the renderer both read that linkage; no semantic enrichment is involved.
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass, field
 from decimal import Decimal
 
@@ -65,6 +66,24 @@ def holon_root(report_id: str) -> URIRef:
   return URIRef(f"https://robosystems.ai/report/{report_id}")
 
 
+_ORDER_PREFIX = re.compile(r"^\s*(\d+)")
+
+
+def _order_key(name: str | None) -> str:
+  """Lexicographic sort key from a SEC role definition's leading number.
+
+  SEC role definitions read ``"{number} - {Type} - {Name}"``. That number is a
+  *string* sort key, not an integer: a filer's own sections are 7-digit
+  (``9952153``) while the standard ecd/cyd governance roles are 6-digit
+  (``995445``), so a numeric sort drops the 6-digit governance codes ahead of the
+  statements. Sorting the digit string lexicographically — exactly what the SEC
+  adapter does (``ORDER BY number``) — keeps statements first. Unnumbered roles
+  sort last (``~`` follows every digit in ASCII).
+  """
+  m = _ORDER_PREFIX.match(name or "")
+  return m.group(1) if m else "~"
+
+
 @dataclass
 class _Structure:
   """One extended-link-role network group (presentation + calc + definition)."""
@@ -72,6 +91,7 @@ class _Structure:
   role_uri: str
   slug: str
   name: str
+  order: int | None = None
   presentation: list[Network] = field(default_factory=list)
   calculation: list[Network] = field(default_factory=list)
   definition: list[Network] = field(default_factory=list)
@@ -225,6 +245,13 @@ def _plan_structures(model: XbrlModel) -> dict[str, _Structure]:
       st.calculation.append(net)
     else:
       st.definition.append(net)
+
+  # Section order: rank structures by their role-definition number sorted as a
+  # *string* (matching the SEC adapter's `ORDER BY number`), so 6-digit ecd
+  # governance roles don't sort ahead of the 7-digit filer statements.
+  ranked = sorted(structs.values(), key=lambda s: _order_key(s.name))
+  for rank, st in enumerate(ranked):
+    st.order = rank
   return structs
 
 
@@ -239,6 +266,8 @@ def _add_structures(g: Graph, structures: dict[str, _Structure], root: URIRef) -
     g.add((s_uri, RS.roleUri, Literal(st.role_uri)))
     g.add((s_uri, RS.structureName, Literal(st.name)))
     g.add((s_uri, SKOS.prefLabel, Literal(st.name)))
+    if st.order is not None:
+      g.add((s_uri, RS.structureOrder, Literal(st.order, datatype=XSD.integer)))
     if st.renderable:
       g.add((s_uri, RS.factSet, _factset_uri(st.role_uri)))
 

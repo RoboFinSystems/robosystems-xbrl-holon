@@ -317,6 +317,10 @@
     "structureName": {
       "@id": "https://robosystems.ai/vocab/structureName"
     },
+    "structureOrder": {
+      "@id": "https://robosystems.ai/vocab/structureOrder",
+      "@type": "xsd:integer"
+    },
     "styles": "https://robosystems.ai/taxonomy/rs-gaap/reporting-styles/v1/",
     "substitutionGroup": {
       "@id": "https://robosystems.ai/vocab/substitutionGroup",

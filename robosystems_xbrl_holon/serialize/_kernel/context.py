@@ -125,6 +125,9 @@ CANONICAL_CONTEXT: dict = {
   "citation": {"@id": f"{RS_VOCAB}citation"},
   # Structure (extended link roles)
   "structureName": {"@id": f"{RS_VOCAB}structureName"},
+  # v1.1 — the filer's section sequence (leading number of a SEC role
+  # definition), so consumers order all sections by filing order.
+  "structureOrder": {"@id": f"{RS_VOCAB}structureOrder", "@type": "xsd:integer"},
   "blockType": {"@id": f"{RS_VOCAB}blockType"},
   "roleUri": {"@id": f"{RS_VOCAB}roleUri"},
   "conceptArrangementPattern": {"@id": f"{RS_VOCAB}conceptArrangementPattern"},

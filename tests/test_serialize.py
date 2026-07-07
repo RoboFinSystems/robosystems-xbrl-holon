@@ -24,12 +24,14 @@ from robosystems_xbrl_holon.model import (
   XbrlFact,
   XbrlModel,
 )
+from rdflib import RDF
+
 from robosystems_xbrl_holon.serialize import (
   build_holon_graph,
   classify_network,
   to_holon,
 )
-from robosystems_xbrl_holon.serialize._kernel.jsonld import shacl_report
+from robosystems_xbrl_holon.serialize._kernel.jsonld import RS, shacl_report
 
 
 def _model() -> XbrlModel:
@@ -282,6 +284,46 @@ def _dim_model() -> XbrlModel:
     facts=facts,
     networks=networks,
   )
+
+
+def test_structure_order_is_string_sorted() -> None:
+  # A 7-digit filer statement vs a 6-digit ecd governance role: numerically
+  # 9952153 > 995445, but as strings "9952153" < "995445", so the statement must
+  # rank first — matching the SEC adapter's `ORDER BY number` (string) sort.
+  concepts = {
+    "us-gaap:Assets": Concept(
+      qname="us-gaap:Assets", namespace="", name="Assets", is_numeric=True
+    ),
+    "ecd:Foo": Concept(qname="ecd:Foo", namespace="", name="Foo"),
+  }
+  networks = [
+    Network(
+      role_uri="http://x/role/Insider",
+      definition="995445 - Disclosure - Insider Trading Arrangements",
+      kind="presentation",
+      arcs=[Arc(from_qname="ecd:Foo", to_qname="ecd:Foo", order=1.0)],
+    ),
+    Network(
+      role_uri="http://x/role/BalanceSheet",
+      definition="9952153 - Statement - Consolidated Balance Sheets",
+      kind="presentation",
+      arcs=[Arc(from_qname="us-gaap:Assets", to_qname="us-gaap:Assets", order=1.0)],
+    ),
+  ]
+  model = XbrlModel(
+    filing=FilingMeta(accession="0000000000-24-000009", cik="0000000001"),
+    entity=EntityIdentity(cik="0000000001"),
+    concepts=concepts,
+    networks=networks,
+  )
+  graph = build_holon_graph(model)
+  order = {
+    str(graph.value(s, RS.structureName)): int(graph.value(s, RS.structureOrder))  # type: ignore[arg-type]
+    for s in graph.subjects(RDF.type, RS.Structure)
+  }
+  bs = order["9952153 - Statement - Consolidated Balance Sheets"]
+  insider = order["995445 - Disclosure - Insider Trading Arrangements"]
+  assert bs < insider, f"statement (rank {bs}) must precede governance (rank {insider})"
 
 
 def test_dimensional_facts_emitted_and_partitioned() -> None:
