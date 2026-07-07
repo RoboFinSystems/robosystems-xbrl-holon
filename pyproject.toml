@@ -37,6 +37,9 @@ dependencies = [
     "rdflib",
     "pyshacl",
     "requests>=2.31",
+    # Required by the vendored EDGAR ixt-sec transform registry
+    # (_vendor/arelle_plugins/EDGAR/transform).
+    "regex",
 ]
 
 [project.optional-dependencies]

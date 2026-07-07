@@ -163,6 +163,9 @@
       "@type": "xsd:boolean"
     },
     "iso4217": "http://www.xbrl.org/2003/iso4217#",
+    "itemType": {
+      "@id": "https://robosystems.ai/vocab/itemType"
+    },
     "label": "rdfs:label",
     "labelLanguage": {
       "@id": "https://robosystems.ai/vocab/labelLanguage"

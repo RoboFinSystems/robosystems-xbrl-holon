@@ -326,6 +326,45 @@ def test_structure_order_is_string_sorted() -> None:
   assert bs < insider, f"statement (rank {bs}) must precede governance (rank {insider})"
 
 
+def test_item_type_value_domain() -> None:
+  # itemType is the value domain (orthogonal to elementType), so a consumer can
+  # tell a rendered HTML disclosure (textBlock) from a number or a plain string.
+  concepts = {
+    "us-gaap:PolicyTextBlock": Concept(
+      qname="us-gaap:PolicyTextBlock",
+      namespace="",
+      name="PolicyTextBlock",
+      is_textblock=True,
+    ),
+    "us-gaap:Assets": Concept(
+      qname="us-gaap:Assets",
+      namespace="",
+      name="Assets",
+      is_numeric=True,
+      item_type="monetaryItemType",
+    ),
+    "dei:EntityRegistrantName": Concept(
+      qname="dei:EntityRegistrantName",
+      namespace="",
+      name="EntityRegistrantName",
+      item_type="stringItemType",
+    ),
+  }
+  model = XbrlModel(
+    filing=FilingMeta(accession="0000000000-24-000010", cik="0000000001"),
+    entity=EntityIdentity(cik="0000000001"),
+    concepts=concepts,
+  )
+  graph = build_holon_graph(model)
+  item = {
+    str(graph.value(s, RS.internalId)): str(graph.value(s, RS.itemType))
+    for s in graph.subjects(RDF.type, RS.Element)
+  }
+  assert item["us-gaap:PolicyTextBlock"] == "textBlock"
+  assert item["us-gaap:Assets"] == "monetary"
+  assert item["dei:EntityRegistrantName"] == "string"
+
+
 def test_dimensional_facts_emitted_and_partitioned() -> None:
   model = _dim_model()
 

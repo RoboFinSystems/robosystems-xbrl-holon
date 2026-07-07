@@ -93,6 +93,9 @@ CANONICAL_CONTEXT: dict = {
   "abstract": {"@id": f"{RS_VOCAB}abstract", "@type": "xsd:boolean"},
   "monetary": {"@id": f"{RS_VOCAB}monetary", "@type": "xsd:boolean"},
   "elementType": {"@id": f"{RS_VOCAB}elementType"},
+  # v1.1 — the element's value domain (textBlock / monetary / shares / decimal /
+  # date / boolean / string), orthogonal to elementType's structural role.
+  "itemType": {"@id": f"{RS_VOCAB}itemType"},
   "substitutionGroup": {"@id": f"{RS_VOCAB}substitutionGroup", "@type": "@id"},
   "source": {"@id": f"{RS_VOCAB}source"},
   # Relationships. Structural taxonomy arcs (presentation / calculation /

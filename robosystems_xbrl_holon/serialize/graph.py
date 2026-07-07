@@ -170,6 +170,7 @@ def _add_elements(g: Graph, model: XbrlModel) -> None:
     g.add((uri, RS.monetary, Literal(is_monetary, datatype=XSD.boolean)))
     g.add((uri, RS.abstract, Literal(concept.is_abstract, datatype=XSD.boolean)))
     g.add((uri, RS.elementType, Literal(_element_type(concept))))
+    g.add((uri, RS.itemType, Literal(_item_type(concept))))
     if concept.pref_label:
       g.add((uri, SKOS.prefLabel, Literal(concept.pref_label)))
     if concept.substitution_group:
@@ -188,6 +189,32 @@ def _element_type(concept: Concept) -> str:
   if concept.is_abstract:
     return "abstract"
   return "concept"
+
+
+def _item_type(concept: Concept) -> str:
+  """The element's value domain (``rs:itemType``) — orthogonal to elementType.
+
+  elementType is the *structural* role (concept/abstract/axis/member/hypercube);
+  itemType is what kind of *value* the element's facts carry, so a consumer knows
+  a fact is a rendered HTML disclosure (``textBlock``) vs a number vs a date/flag.
+  Derived from Arelle's derivation-aware flags (robust to custom subtypes), it
+  matches the value-domain vocabulary the platform's planned ``Element.itemType``
+  will use (see specs/parking lot/nonnumeric-facts.md §5).
+  """
+  if concept.is_textblock:
+    return "textBlock"
+  if concept.is_numeric:
+    if (concept.item_type or "").startswith("monetary"):
+      return "monetary"
+    if concept.is_shares:
+      return "shares"
+    return "decimal"
+  raw = (concept.item_type or "").lower()
+  if "date" in raw:
+    return "date"
+  if "boolean" in raw:
+    return "boolean"
+  return "string"
 
 
 def _source_of(qname: str) -> str:

@@ -203,3 +203,21 @@ def test_normalize_cik_pads_numeric():
 
 def test_normalize_cik_passes_non_numeric():
   assert _normalize_cik("ABC-123") == "ABC-123"
+
+
+def test_sec_ixt_transforms_register():
+  # The vendored EDGAR/transform registry must wire the SEC ixt namespace into
+  # Arelle's lookup, or SEC-formatted cover-page/DEI facts (state/country codes,
+  # word-numbers) parse to (ixTransformValueError). No network, no model load.
+  from arelle import FunctionIxt
+
+  from robosystems_xbrl_holon.parse.arelle_load import (
+    SEC_IXT_NAMESPACE,
+    _register_sec_transforms,
+  )
+
+  _register_sec_transforms()
+  registry = FunctionIxt.ixtNamespaceFunctions.get(SEC_IXT_NAMESPACE, {})
+  assert "stateprovnameen" in registry
+  assert "edgarprovcountryen" in registry
+  assert callable(registry["stateprovnameen"])
