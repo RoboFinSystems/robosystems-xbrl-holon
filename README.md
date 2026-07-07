@@ -14,15 +14,15 @@ pip install robosystems-xbrl-holon
 
 ```bash
 # Build a holon.jsonld document from a specific filing
-holon build --cik 320193 --accno 0000320193-23-000106 -o report.holon.jsonld
+just holon-build 320193 0000320193-23-000106
 
 # Fetch the latest filing for a ticker
-holon fetch --ticker NVDA
+just holon-fetch NVDA
 ```
 
 > **Note:** SEC EDGAR requires a descriptive User-Agent for all requests. Set
-> `XBRL_HOLON_USER_AGENT` (e.g. `"Your Name your@email.com"`) before running any
-> command that reaches SEC.
+> `SEC_GOV_USER_AGENT` (e.g. `"Your Name your@email.com"`) in your .env before
+> running any command that reaches SEC.gov.
 
 ## License
 

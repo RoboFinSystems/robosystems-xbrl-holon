@@ -5,7 +5,7 @@ central env config. This package is platform-free, so those settings live here
 (env-overridable, or constructed explicitly by the CLI) instead.
 
 SEC fair-access requires a ``User-Agent`` that identifies you with contact
-info. Set ``XBRL_HOLON_USER_AGENT`` (e.g. ``"Acme Corp ops@acme.com"``) or the
+info. Set ``SEC_GOV_USER_AGENT`` (e.g. ``"Acme Corp ops@acme.com"``) or the
 SEC will throttle you with empty/HTTP-429 responses.
 """
 
@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 DEFAULT_USER_AGENT = (
-  "robosystems-xbrl-holon (set XBRL_HOLON_USER_AGENT='Name email@example.com')"
+  "robosystems-xbrl-holon (set SEC_GOV_USER_AGENT='Name email@example.com')"
 )
 
 
@@ -32,7 +32,7 @@ class Config:
   """Runtime settings. Immutable; the CLI builds one per invocation."""
 
   user_agent: str = field(
-    default_factory=lambda: os.environ.get("XBRL_HOLON_USER_AGENT", DEFAULT_USER_AGENT)
+    default_factory=lambda: os.environ.get("SEC_GOV_USER_AGENT", DEFAULT_USER_AGENT)
   )
   sec_base_url: str = "https://www.sec.gov"
   sec_data_url: str = "https://data.sec.gov"

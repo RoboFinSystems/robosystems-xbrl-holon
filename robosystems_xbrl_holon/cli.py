@@ -92,7 +92,7 @@ def build_parser() -> argparse.ArgumentParser:
   )
   parser.add_argument(
     "--user-agent",
-    help="SEC User-Agent (else $XBRL_HOLON_USER_AGENT). Must identify you with contact info.",
+    help="SEC User-Agent (else $SEC_GOV_USER_AGENT). Must identify you with contact info.",
   )
   sub = parser.add_subparsers(dest="command", required=True)
 
