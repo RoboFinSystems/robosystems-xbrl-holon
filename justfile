@@ -1,3 +1,6 @@
+# Local env file, provisioned from .env.example on `just install`
+_env := ".env"
+
 # Default recipe to run when just is called without arguments
 default:
     @just --list
@@ -9,8 +12,9 @@ venv:
     source .venv/bin/activate
     @just install
 
-# Install dependencies
+# Install dependencies (provisions .env from the template on first run)
 install:
+    @test -f {{_env}} || cp .env.example {{_env}}
     uv pip install -e ".[dev]"
     uv sync --all-extras
 
