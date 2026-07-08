@@ -15,7 +15,9 @@ import tempfile
 from datetime import date
 from pathlib import Path
 
-from .config import CONFIG, Config
+from dotenv import load_dotenv
+
+from .config import Config
 from .edgar import EdgarClient, download_filing
 from .model import FilingMeta, XbrlModel
 from .parse import close, load_model, to_xbrl_model
@@ -70,7 +72,10 @@ def _build_one(
 def _config_from_args(args: argparse.Namespace) -> Config:
   if getattr(args, "user_agent", None):
     return Config(user_agent=args.user_agent)
-  return CONFIG
+  # Fresh Config() re-reads os.environ after main()'s load_dotenv(), so a
+  # SEC_GOV_USER_AGENT set in .env is honored (the module-level CONFIG was
+  # frozen at import, before the .env was loaded).
+  return Config()
 
 
 def _cmd_build(args: argparse.Namespace) -> int:
@@ -173,6 +178,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+  load_dotenv()  # load SEC_GOV_USER_AGENT (and other overrides) from a local .env
   parser = build_parser()
   args = parser.parse_args(argv)
   try:
