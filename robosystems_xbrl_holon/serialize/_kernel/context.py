@@ -180,6 +180,14 @@ CANONICAL_CONTEXT: dict = {
   "serializationVersion": {"@id": f"{RS_VOCAB}serializationVersion"},
   "mode": {"@id": f"{RS_VOCAB}mode"},
   "internalId": {"@id": f"{RS_VOCAB}internalId"},
+  # v1.1 — Report-node filing metadata (aligns with the SEC graph's Report node),
+  # so the holon identifies its filing rather than encoding it only in the graph IRI.
+  "accessionNumber": {"@id": f"{RS_VOCAB}accessionNumber"},
+  "form": {"@id": f"{RS_VOCAB}form"},
+  "filingDate": {"@id": f"{RS_VOCAB}filingDate", "@type": "xsd:date"},
+  "fiscalYearFocus": {"@id": f"{RS_VOCAB}fiscalYearFocus"},
+  "fiscalPeriodFocus": {"@id": f"{RS_VOCAB}fiscalPeriodFocus"},
+  "fiscalYearEndMonth": {"@id": f"{RS_VOCAB}fiscalYearEndMonth"},
   # ── Domain / package terms ─────────────────────────────────────────────
   # Every term any framework seed uses must live here so the one canonical
   # context is a true superset — undeclared terms would either drop on parse

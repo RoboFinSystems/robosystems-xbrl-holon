@@ -348,11 +348,14 @@ def _make_dims(
   Registers each axis (and explicit member) as a full :class:`Concept` so the
   serializer can label them, and records segment-vs-scenario per dimension.
   """
+  # segDimValues / scenDimValues are keyed by the *axis ModelConcept*, not the
+  # QName, so segment/scenario is tested against mem.dimension (the axis concept).
   seg = set(getattr(context, "segDimValues", {}) or {})
   scen = set(getattr(context, "scenDimValues", {}) or {})
   dims: list[DimQualifier] = []
   for dim, mem in context.qnameDims.items():
-    _ensure_concept(mx, concepts, namespaces, getattr(mem, "dimension", None))
+    axis_concept = getattr(mem, "dimension", None)
+    _ensure_concept(mx, concepts, namespaces, axis_concept)
     member_qname: str | None = None
     if mem.isExplicit:
       member = getattr(mem, "member", None)
@@ -365,7 +368,13 @@ def _make_dims(
         member_qname=member_qname,
         typed_value=mem.stringValue if mem.isTyped else None,
         is_explicit=bool(mem.isExplicit),
-        axis_type="segment" if dim in seg else "scenario" if dim in scen else None,
+        axis_type=(
+          "segment"
+          if axis_concept in seg
+          else "scenario"
+          if axis_concept in scen
+          else None
+        ),
       )
     )
   return dims

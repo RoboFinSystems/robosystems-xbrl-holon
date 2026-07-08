@@ -93,6 +93,10 @@ def partition_report_graph(g: Graph) -> dict[str, Graph]:
   # blockType / prefLabel and that grouping link land in scene.
   for ib in g.subjects(RDF.type, RS.InformationBlock):
     scene_subjects.add(ib)  # type: ignore[arg-type]
+  # The Report node carries the filing's identity (accession / form / date /
+  # fiscal focus); keep it in scene so the report is self-identifying.
+  for report in g.subjects(RDF.type, RS.Report):
+    scene_subjects.add(report)  # type: ignore[arg-type]
   for s in scene_subjects:
     for p, o in g.predicate_objects(s):
       if p == RS.envelopeJson:

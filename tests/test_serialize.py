@@ -365,6 +365,25 @@ def test_item_type_value_domain() -> None:
   assert item["dei:EntityRegistrantName"] == "string"
 
 
+def test_report_node_carries_filing_metadata() -> None:
+  # The holon must identify its filing (accession/form) via a Report node that
+  # survives the partition into #scene — mirroring the SEC graph's Report node.
+  model = _model()
+  graph = build_holon_graph(model)
+  reports = list(graph.subjects(RDF.type, RS.Report))
+  assert len(reports) == 1
+  assert str(graph.value(reports[0], RS.accessionNumber)) == "0000000000-24-000001"
+  assert str(graph.value(reports[0], RS.form)) == "10-K"
+
+  doc = json.loads(to_holon(model))
+  scene = next(
+    e["@graph"]
+    for e in doc["@graph"]
+    if isinstance(e, dict) and str(e.get("@id", "")).endswith("#scene")
+  )
+  assert any("rs:Report" in _types(n) for n in scene)
+
+
 def test_dimensional_facts_emitted_and_partitioned() -> None:
   model = _dim_model()
 
@@ -377,6 +396,7 @@ def test_dimensional_facts_emitted_and_partitioned() -> None:
   dim_nodes = [n for n in nodes if "rs:Dimension" in _types(n)]
   assert len(dim_nodes) == 1, "one rs:Dimension for the single (axis, member)"
   assert "axis" in dim_nodes[0] and "member" in dim_nodes[0]
+  assert dim_nodes[0].get("axisType") == "segment"
 
   fact_nodes = [n for n in nodes if "rs:Fact" in _types(n)]
   assert len(fact_nodes) == 2

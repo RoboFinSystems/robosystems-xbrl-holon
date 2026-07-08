@@ -4,6 +4,9 @@
       "@id": "https://robosystems.ai/vocab/abstract",
       "@type": "xsd:boolean"
     },
+    "accessionNumber": {
+      "@id": "https://robosystems.ai/vocab/accessionNumber"
+    },
     "altLabel": "skos:altLabel",
     "arcrole": {
       "@id": "xlink:arcrole",
@@ -123,6 +126,10 @@
     "factType": {
       "@id": "https://robosystems.ai/vocab/factType"
     },
+    "filingDate": {
+      "@id": "https://robosystems.ai/vocab/filingDate",
+      "@type": "xsd:date"
+    },
     "financialReportPossibleDisclosure": {
       "@id": "https://robosystems.ai/vocab/financialReportPossibleDisclosure",
       "@type": "@id"
@@ -130,6 +137,18 @@
     "financialReportRequiresDisclosure": {
       "@id": "https://robosystems.ai/vocab/financialReportRequiresDisclosure",
       "@type": "@id"
+    },
+    "fiscalPeriodFocus": {
+      "@id": "https://robosystems.ai/vocab/fiscalPeriodFocus"
+    },
+    "fiscalYearEndMonth": {
+      "@id": "https://robosystems.ai/vocab/fiscalYearEndMonth"
+    },
+    "fiscalYearFocus": {
+      "@id": "https://robosystems.ai/vocab/fiscalYearFocus"
+    },
+    "form": {
+      "@id": "https://robosystems.ai/vocab/form"
     },
     "from": {
       "@id": "xlink:from",

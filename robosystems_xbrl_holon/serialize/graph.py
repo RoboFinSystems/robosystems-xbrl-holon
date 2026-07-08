@@ -144,6 +144,23 @@ def _add_root(
   g.add((root, RS.reportingStyle, Literal("sec-as-filed")))
   g.add((root, RS.entity, entity_node))
 
+  # Filing metadata on the Report node — identifies the filing (accession/form/
+  # date/fiscal focus), mirroring the SEC graph's Report node.
+  filing = model.filing
+  g.add((root, RS.accessionNumber, Literal(filing.accession)))
+  if filing.form:
+    g.add((root, RS.form, Literal(filing.form)))
+  if filing.filing_date:
+    g.add(
+      (root, RS.filingDate, Literal(filing.filing_date.isoformat(), datatype=XSD.date))
+    )
+  if filing.fiscal_year_focus:
+    g.add((root, RS.fiscalYearFocus, Literal(filing.fiscal_year_focus)))
+  if filing.fiscal_period_focus:
+    g.add((root, RS.fiscalPeriodFocus, Literal(filing.fiscal_period_focus)))
+  if filing.fiscal_year_end_month:
+    g.add((root, RS.fiscalYearEndMonth, Literal(filing.fiscal_year_end_month)))
+
   g.add((entity_node, RDF.type, RS.Entity))
   name = model.entity.name or model.entity.cik
   g.add((entity_node, SKOS.prefLabel, Literal(name)))
