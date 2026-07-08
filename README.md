@@ -7,6 +7,18 @@ Convert SEC XBRL filings into `holon.jsonld` documents that render in the
 
 ## Install
 
+### As a package
+
+```bash
+pip install robosystems-xbrl-holon
+```
+
+Exposes the `holon` CLI (`holon build …`, `holon fetch …`, `holon query …`) and
+the library — use this to consume it from another project. Set your SEC
+User-Agent via the environment (see [SEC User-Agent](#sec-user-agent)).
+
+### From source (development)
+
 ```bash
 # Install the toolchain
 brew install uv just
@@ -16,11 +28,7 @@ just install
 ```
 
 `just install` creates `.env` from `.env.example` on first run — then set your
-SEC User-Agent in it (see [SEC User-Agent](#sec-user-agent)). It exposes the
-`holon` CLI (`holon build …`, `holon fetch …`, `holon query …`).
-
-> Not yet published. Once it's on PyPI, you'll be able to `pip install
-> robosystems-xbrl-holon` to use it as a dependency in another project.
+SEC User-Agent in it.
 
 ## SEC User-Agent
 
@@ -40,18 +48,17 @@ SEC_GOV_USER_AGENT="Your Name your@email.com"
 
 ```bash
 # Build a holon.jsonld from a specific filing (-> ./output/)
-just holon-build 320193 0000320193-23-000106
+holon build --cik 320193 --accno 0000320193-23-000106
 
 # Fetch the latest filing for a ticker (-> ./output/)
-just holon-fetch NVDA
-```
-
-Or call the `holon` CLI directly:
-
-```bash
-holon build --cik 320193 --accno 0000320193-23-000106
 holon fetch --ticker NVDA
+
+# Query consolidated facts in a built holon (in-memory SPARQL)
+holon query --in output/0000320193-23-000106.holon.jsonld --element us-gaap:Assets
 ```
+
+From a source checkout, `just` wraps the same CLI as a shorthand:
+`just holon-build 320193 0000320193-23-000106` and `just holon-fetch NVDA`.
 
 ## View & explore
 
