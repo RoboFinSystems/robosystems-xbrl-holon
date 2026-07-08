@@ -205,6 +205,31 @@ def test_normalize_cik_passes_non_numeric():
   assert _normalize_cik("ABC-123") == "ABC-123"
 
 
+def test_calendar_enrichment():
+  from robosystems_xbrl_holon.parse.to_model import (
+    _duration_calendar,
+    _instant_calendar,
+  )
+
+  assert _instant_calendar(date(2026, 1, 25)) == (2026, "Q1", "2026-01-25")
+  assert _duration_calendar(date(2025, 1, 27), date(2026, 1, 25)) == (
+    "annual",
+    2026,
+    "FY",
+    "2026",
+  )
+  assert _duration_calendar(date(2025, 10, 27), date(2026, 1, 25)) == (
+    "quarterly",
+    2026,
+    "Q1",
+    "2026Q1",
+  )
+  dtype, _year, quarter, _key = _duration_calendar(
+    date(2025, 12, 1), date(2025, 12, 31)
+  )
+  assert dtype == "other" and quarter is None
+
+
 def test_sec_ixt_transforms_register():
   # The vendored EDGAR/transform registry must wire the SEC ixt namespace into
   # Arelle's lookup, or SEC-formatted cover-page/DEI facts (state/country codes,

@@ -157,7 +157,10 @@ CANONICAL_CONTEXT: dict = {
   "startDate": {"@id": "xbrli:startDate", "@type": "xsd:date"},
   "endDate": {"@id": "xbrli:endDate", "@type": "xsd:date"},
   "calendarPeriodKey": {"@id": f"{RS_VOCAB}calendarPeriodKey"},
-  # v1.1 — deterministic annual/quarterly bucket for duration periods.
+  # v1.1 — derived calendar enrichment: normalize a period onto a common
+  # calendar axis (year + quarter) and bucket its duration.
+  "calendarYear": {"@id": f"{RS_VOCAB}calendarYear", "@type": "xsd:integer"},
+  "calendarQuarter": {"@id": f"{RS_VOCAB}calendarQuarter"},
   "durationType": {"@id": f"{RS_VOCAB}durationType"},
   # Unit node
   "measure": {"@id": "xbrli:measure", "@type": "@id"},

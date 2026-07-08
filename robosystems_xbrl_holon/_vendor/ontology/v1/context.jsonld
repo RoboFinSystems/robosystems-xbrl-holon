@@ -31,6 +31,13 @@
     "calendarPeriodKey": {
       "@id": "https://robosystems.ai/vocab/calendarPeriodKey"
     },
+    "calendarQuarter": {
+      "@id": "https://robosystems.ai/vocab/calendarQuarter"
+    },
+    "calendarYear": {
+      "@id": "https://robosystems.ai/vocab/calendarYear",
+      "@type": "xsd:integer"
+    },
     "category": {
       "@id": "https://robosystems.ai/vocab/category"
     },

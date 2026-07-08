@@ -26,7 +26,7 @@ PeriodType = Literal["instant", "duration", "forever"]
 BalanceType = Literal["debit", "credit"]
 NetworkKind = Literal["presentation", "calculation", "definition"]
 ValueKind = Literal["numeric", "text"]
-DurationType = Literal["annual", "quarterly"]
+DurationType = Literal["annual", "quarterly", "semi_annual", "nine_months", "other"]
 AxisType = Literal["segment", "scenario"]
 
 
@@ -95,9 +95,12 @@ class Period(BaseModel):
 
   ``id`` is a content-derived, cross-filing-stable identifier so periods
   dedupe. Dates are already normalized (Arelle's exclusive next-midnight has
-  been rolled back by one day at parse time). ``duration_type`` is a
-  deterministic bucket over the day span (annual ≈ 52/53 weeks, quarterly ≈ 13
-  weeks); ``None`` for instants, forevers, and non-standard spans (6-/9-month).
+  been rolled back by one day at parse time). The calendar fields are a
+  deterministic enrichment derived from the dates (not raw XBRL) — they place a
+  period on a common calendar axis so "which quarter/year is this" is legible
+  without re-deriving it: ``duration_type`` buckets the day span,
+  ``calendar_year``/``calendar_quarter`` normalize by the end date, and
+  ``calendar_period_key`` is a compact label (``2026Q1`` / ``2026`` / a date).
   """
 
   id: str
@@ -105,6 +108,9 @@ class Period(BaseModel):
   start: date | None = None
   end: date | None = None
   duration_type: DurationType | None = None
+  calendar_year: int | None = None
+  calendar_quarter: str | None = None
+  calendar_period_key: str | None = None
 
 
 class Unit(BaseModel):

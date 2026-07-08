@@ -256,6 +256,12 @@ def _add_periods(g: Graph, model: XbrlModel, root: URIRef) -> None:
         g.add((uri, XBRLI.endDate, Literal(period.end.isoformat(), datatype=XSD.date)))
     if period.duration_type:
       g.add((uri, RS.durationType, Literal(period.duration_type)))
+    if period.calendar_year is not None:
+      g.add((uri, RS.calendarYear, Literal(period.calendar_year, datatype=XSD.integer)))
+    if period.calendar_quarter:
+      g.add((uri, RS.calendarQuarter, Literal(period.calendar_quarter)))
+    if period.calendar_period_key:
+      g.add((uri, RS.calendarPeriodKey, Literal(period.calendar_period_key)))
 
 
 def _add_units(g: Graph, model: XbrlModel, root: URIRef) -> None:
