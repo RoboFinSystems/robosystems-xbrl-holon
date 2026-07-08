@@ -40,6 +40,7 @@ from rdflib import RDF, Dataset, Graph, URIRef
 from .bundle import StatementBundle
 from .jsonld import (
   RS,
+  XLINK,
   _build_context,
   _root_uri,
   build_graph,
@@ -76,26 +77,48 @@ def partition_report_graph(g: Graph) -> dict[str, Graph]:
       v = g.value(fact, ref)
       if isinstance(v, URIRef):
         scene_subjects.add(v)
+    # A fact may carry several dimensional coordinates; pull each rs:Dimension
+    # node into scene, and the axis / member Elements it links so their labels
+    # travel with the dimensional facts.
+    for dim in g.objects(fact, RS.dimension):
+      if not isinstance(dim, URIRef):
+        continue
+      scene_subjects.add(dim)
+      for aref in (RS.axis, RS.member):
+        av = g.value(dim, aref)
+        if isinstance(av, URIRef):
+          scene_subjects.add(av)
   # The InformationBlock molecule groups its facts via the shared factSet
   # (Fact --factSet--> FactSet <--factSet-- InformationBlock); include it so its
   # blockType / prefLabel and that grouping link land in scene.
   for ib in g.subjects(RDF.type, RS.InformationBlock):
     scene_subjects.add(ib)  # type: ignore[arg-type]
+  # The Report node carries the filing's identity (accession / form / date /
+  # fiscal focus); keep it in scene so the report is self-identifying.
+  for report in g.subjects(RDF.type, RS.Report):
+    scene_subjects.add(report)  # type: ignore[arg-type]
   for s in scene_subjects:
     for p, o in g.predicate_objects(s):
       if p == RS.envelopeJson:
         continue
       scene.add((s, p, o))
 
+  # Associations: calculation → boundary, everything else (presentation and the
+  # XBRL-dimensions *definition* wiring) → projection. The endpoint Elements are
+  # copied alongside so the presentation tree and hypercube wiring carry labels.
+  projection_elements: set[URIRef] = set()
   for assoc in g.subjects(RDF.type, RS.Association):
     at = str(g.value(assoc, RS.associationType) or "")
-    target = (
-      boundary if at == "calculation" else projection if at == "presentation" else None
-    )
-    if target is None:
-      continue
+    target = boundary if at == "calculation" else projection
     for p, o in g.predicate_objects(assoc):
       target.add((assoc, p, o))
+      if p in (XLINK["from"], XLINK.to) and isinstance(o, URIRef):
+        projection_elements.add(o)
+  for el in projection_elements:
+    for p, o in g.predicate_objects(el):
+      if p == RS.envelopeJson:
+        continue
+      projection.add((el, p, o))
 
   for struct in g.subjects(RDF.type, RS.Structure):
     for p, o in g.predicate_objects(struct):

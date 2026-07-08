@@ -1,0 +1,5 @@
+# Generated holon outputs live here. The folder is tracked (so the default
+# output path exists on a fresh clone), but everything written into it is
+# ignored — only this .gitignore is committed.
+*
+!.gitignore

@@ -7,7 +7,7 @@ A platform-free mirror of the robosystems SEC adapter client: synchronous
 
 from __future__ import annotations
 
-from .client import EdgarClient, FilingRef
+from .client import CompanyInfo, EdgarClient, FilingRef
 from .download import download_filing, fetch
 
-__all__ = ["EdgarClient", "FilingRef", "download_filing", "fetch"]
+__all__ = ["CompanyInfo", "EdgarClient", "FilingRef", "download_filing", "fetch"]

@@ -16,6 +16,7 @@ Usage::
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -29,6 +30,10 @@ if TYPE_CHECKING:
 # SEC inline-XBRL transformation registry. Formatted numeric/date facts in
 # modern 10-K/10-Q filings reference transforms in this namespace.
 SEC_IXT_NAMESPACE = "http://www.sec.gov/inlineXBRL/transformation/2015-08-31"
+
+# The vendored EDGAR plugin tree — its ``transform`` module carries the SEC ixt
+# registry (name↔code tables) that standalone arelle-release lacks.
+_VENDOR_PLUGINS = Path(__file__).resolve().parents[1] / "_vendor" / "arelle_plugins"
 
 
 def load_model(source: str | Path, cache_dir: Path | None = None) -> ModelXbrl:
@@ -99,19 +104,33 @@ def _enable_inline_xbrl(cntlr: Any) -> None:
 def _register_sec_transforms() -> None:
   """Register the SEC inline-XBRL transformation functions.
 
-  The SEC ``2015-08-31`` transforms (duryear, stateprovnameen, …) ship with
-  Arelle's EDGAR plugin. We attempt to load it so SEC-formatted inline facts
-  parse fully; a standalone ``arelle-release`` install without the plugin
-  falls back to Arelle's built-in ixt registries (``FunctionIxt``), which
-  cover the standard transformation registries the bulk of modern inline
-  filings reference.
+  The SEC ``2015-08-31`` transforms (``stateprovnameen``, ``edgarprovcountryen``,
+  ``numwordsen``, …) are **not** in standalone ``arelle-release`` — they live in
+  the EDGAR plugin's ``transform`` module, which this package vendors at
+  ``_vendor/arelle_plugins/EDGAR/transform`` (just the transform registry, not the
+  matplotlib-backed renderer). Without them, SEC-formatted cover-page/DEI facts
+  (state/country codes, some dates/booleans/word-numbers) parse to
+  ``(ixTransformValueError)``.
+
+  The plugin publishes its transforms through a ``ModelManager.LoadCustomTransforms``
+  mount point that Arelle doesn't invoke in this headless load, so we register them
+  directly into the namespace map Arelle resolves against
+  (``FunctionIxt.ixtNamespaceFunctions[ns][localName]``, FunctionIxt.py:34).
   """
   try:
-    from arelle import FunctionIxt  # noqa: F401  (import registers registries)
+    from arelle import FunctionIxt
   except Exception:
     return
+  if str(_VENDOR_PLUGINS) not in sys.path:
+    sys.path.insert(0, str(_VENDOR_PLUGINS))
   try:
-    PluginManager.addPluginModule("EDGAR/transform")
+    from EDGAR.transform import loadSECtransforms  # type: ignore[import-not-found]
+
+    custom: dict[Any, Any] = {}
+    loadSECtransforms(custom)
+    FunctionIxt.ixtNamespaceFunctions[SEC_IXT_NAMESPACE] = {
+      qn.localName: fn for qn, fn in custom.items()
+    }
   except Exception:
     pass
 

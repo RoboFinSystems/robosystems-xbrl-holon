@@ -43,11 +43,11 @@ format:
 typecheck:
     uv run basedpyright
 
-# Build a holon.jsonld document from a SEC filing
-holon-build cik accno out="report.holon.jsonld":
-    uv run holon build --cik {{cik}} --accno {{accno}} -o {{out}}
+# Build a holon.jsonld from a SEC filing (defaults into ./output/)
+holon-build cik accno out="":
+    uv run holon build --cik {{cik}} --accno {{accno}} {{ if out == "" { "" } else { "-o " + out } }}
 
-# Fetch the latest filing for a ticker
+# Fetch the latest filing for a ticker (into ./output/)
 holon-fetch ticker:
     uv run holon fetch --ticker {{ticker}}
 

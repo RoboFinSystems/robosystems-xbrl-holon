@@ -4,6 +4,9 @@
       "@id": "https://robosystems.ai/vocab/abstract",
       "@type": "xsd:boolean"
     },
+    "accessionNumber": {
+      "@id": "https://robosystems.ai/vocab/accessionNumber"
+    },
     "altLabel": "skos:altLabel",
     "arcrole": {
       "@id": "xlink:arcrole",
@@ -13,7 +16,11 @@
       "@id": "https://robosystems.ai/vocab/associationType"
     },
     "axis": {
-      "@id": "https://robosystems.ai/vocab/axis"
+      "@id": "https://robosystems.ai/vocab/axis",
+      "@type": "@id"
+    },
+    "axisType": {
+      "@id": "https://robosystems.ai/vocab/axisType"
     },
     "balance": {
       "@id": "xbrli:balance"
@@ -23,6 +30,13 @@
     },
     "calendarPeriodKey": {
       "@id": "https://robosystems.ai/vocab/calendarPeriodKey"
+    },
+    "calendarQuarter": {
+      "@id": "https://robosystems.ai/vocab/calendarQuarter"
+    },
+    "calendarYear": {
+      "@id": "https://robosystems.ai/vocab/calendarYear",
+      "@type": "xsd:integer"
     },
     "category": {
       "@id": "https://robosystems.ai/vocab/category"
@@ -38,6 +52,7 @@
       "@id": "https://robosystems.ai/vocab/classifiedAs",
       "@type": "@id"
     },
+    "cm": "https://github.com/seattlemethod/universal/cm#",
     "cm-roles": "http://www.xbrlsite.com/seattlemethod/conceptual-model/cm-roles/roles/",
     "conceptArrangementPattern": {
       "@id": "https://robosystems.ai/vocab/conceptArrangementPattern"
@@ -83,6 +98,9 @@
     },
     "disclosures": "https://robosystems.ai/taxonomy/rs-gaap/disclosures/v1/",
     "documentation": "rdfs:comment",
+    "durationType": {
+      "@id": "https://robosystems.ai/vocab/durationType"
+    },
     "ein": {
       "@id": "https://robosystems.ai/vocab/ein"
     },
@@ -112,6 +130,13 @@
       "@id": "https://robosystems.ai/vocab/factSet",
       "@type": "@id"
     },
+    "factType": {
+      "@id": "https://robosystems.ai/vocab/factType"
+    },
+    "filingDate": {
+      "@id": "https://robosystems.ai/vocab/filingDate",
+      "@type": "xsd:date"
+    },
     "financialReportPossibleDisclosure": {
       "@id": "https://robosystems.ai/vocab/financialReportPossibleDisclosure",
       "@type": "@id"
@@ -119,6 +144,18 @@
     "financialReportRequiresDisclosure": {
       "@id": "https://robosystems.ai/vocab/financialReportRequiresDisclosure",
       "@type": "@id"
+    },
+    "fiscalPeriodFocus": {
+      "@id": "https://robosystems.ai/vocab/fiscalPeriodFocus"
+    },
+    "fiscalYearEndMonth": {
+      "@id": "https://robosystems.ai/vocab/fiscalYearEndMonth"
+    },
+    "fiscalYearFocus": {
+      "@id": "https://robosystems.ai/vocab/fiscalYearFocus"
+    },
+    "form": {
+      "@id": "https://robosystems.ai/vocab/form"
     },
     "from": {
       "@id": "xlink:from",
@@ -143,7 +180,18 @@
     "internalId": {
       "@id": "https://robosystems.ai/vocab/internalId"
     },
+    "isExplicit": {
+      "@id": "https://robosystems.ai/vocab/isExplicit",
+      "@type": "xsd:boolean"
+    },
+    "isTyped": {
+      "@id": "https://robosystems.ai/vocab/isTyped",
+      "@type": "xsd:boolean"
+    },
     "iso4217": "http://www.xbrl.org/2003/iso4217#",
+    "itemType": {
+      "@id": "https://robosystems.ai/vocab/itemType"
+    },
     "label": "rdfs:label",
     "labelLanguage": {
       "@id": "https://robosystems.ai/vocab/labelLanguage"
@@ -160,7 +208,8 @@
       "@type": "@id"
     },
     "member": {
-      "@id": "https://robosystems.ai/vocab/member"
+      "@id": "https://robosystems.ai/vocab/member",
+      "@type": "@id"
     },
     "mode": {
       "@id": "https://robosystems.ai/vocab/mode"
@@ -287,12 +336,19 @@
     "statementType": {
       "@id": "https://robosystems.ai/vocab/statementType"
     },
+    "stringValue": {
+      "@id": "https://robosystems.ai/vocab/stringValue"
+    },
     "structure": {
       "@id": "https://robosystems.ai/vocab/structure",
       "@type": "@id"
     },
     "structureName": {
       "@id": "https://robosystems.ai/vocab/structureName"
+    },
+    "structureOrder": {
+      "@id": "https://robosystems.ai/vocab/structureOrder",
+      "@type": "xsd:integer"
     },
     "styles": "https://robosystems.ai/taxonomy/rs-gaap/reporting-styles/v1/",
     "substitutionGroup": {
@@ -310,6 +366,9 @@
       "@type": "@id"
     },
     "trait": "https://robosystems.ai/taxonomy/fac-traits/v1/",
+    "typedValue": {
+      "@id": "https://robosystems.ai/vocab/typedValue"
+    },
     "unit": {
       "@id": "https://robosystems.ai/vocab/unit",
       "@type": "@id"

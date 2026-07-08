@@ -17,6 +17,9 @@
 #################################################################
 
 # ── Positive: a Fact references its aspects directly (no context) ──
+# A numeric fact carries rs:unit + rs:numericValue; a non-numeric (text /
+# textBlock) fact carries rs:stringValue and no unit. Both are Facts; the value
+# predicate distinguishes them (rs:factType records which).
 rs:FactShape a sh:NodeShape ;
   sh:targetClass rs:Fact ;
   sh:property [
@@ -29,7 +32,28 @@ rs:FactShape a sh:NodeShape ;
     sh:path rs:unit ; sh:maxCount 1 ;
     sh:message "rs:Fact may reference at most one rs:unit." ] ;
   sh:property [
-    sh:path rs:numericValue ; sh:datatype xsd:decimal ; sh:maxCount 1 ] .
+    sh:path rs:numericValue ; sh:datatype xsd:decimal ; sh:maxCount 1 ] ;
+  sh:property [
+    sh:path rs:stringValue ; sh:maxCount 1 ;
+    sh:message "rs:Fact may carry at most one rs:stringValue (non-numeric value)." ] ;
+  sh:property [
+    sh:path rs:factType ; sh:maxCount 1 ] .
+
+# ── Positive: a Dimension carries its axis (+ explicit member or typed value) ──
+rs:DimensionShape a sh:NodeShape ;
+  sh:targetClass rs:Dimension ;
+  sh:property [
+    sh:path rs:axis ; sh:minCount 1 ; sh:maxCount 1 ; sh:nodeKind sh:IRI ;
+    sh:message "rs:Dimension must reference exactly one rs:axis (the axis Element IRI)." ] ;
+  sh:property [
+    sh:path rs:member ; sh:maxCount 1 ; sh:nodeKind sh:IRI ;
+    sh:message "rs:Dimension references at most one explicit rs:member (Element IRI); typed dimensions use rs:typedValue instead." ] ;
+  sh:property [
+    sh:path rs:typedValue ; sh:maxCount 1 ] ;
+  sh:property [
+    sh:path rs:isExplicit ; sh:maxCount 1 ] ;
+  sh:property [
+    sh:path rs:isTyped ; sh:maxCount 1 ] .
 
 # ── Positive: a reified Association carries XBRL arc vocabulary ──
 rs:AssociationShape a sh:NodeShape ;

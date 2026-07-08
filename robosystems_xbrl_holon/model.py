@@ -26,6 +26,8 @@ PeriodType = Literal["instant", "duration", "forever"]
 BalanceType = Literal["debit", "credit"]
 NetworkKind = Literal["presentation", "calculation", "definition"]
 ValueKind = Literal["numeric", "text"]
+DurationType = Literal["annual", "quarterly", "semi_annual", "nine_months", "other"]
+AxisType = Literal["segment", "scenario"]
 
 
 class FilingMeta(BaseModel):
@@ -61,7 +63,13 @@ class Label(BaseModel):
 
 
 class Concept(BaseModel):
-  """An XBRL concept (``<xs:element>``) as walked from the DTS."""
+  """An XBRL concept (``<xs:element>``) as walked from the DTS.
+
+  Coverage is DTS-wide, not fact-driven: a ``Concept`` exists for every qname
+  the slice touches — reported facts, presentation/calculation/definition arc
+  endpoints (abstract headers, subtotals), and dimension axes/members/domains/
+  hypercubes — so labels and structural flags are available for all of them.
+  """
 
   qname: str
   namespace: str
@@ -71,6 +79,11 @@ class Concept(BaseModel):
   is_abstract: bool = False
   is_numeric: bool = False
   is_textblock: bool = False
+  is_hypercube_item: bool = False
+  is_dimension_item: bool = False
+  is_domain_member: bool = False
+  is_shares: bool = False
+  is_integer: bool = False
   substitution_group: str | None = None
   item_type: str | None = None
   pref_label: str | None = None
@@ -82,13 +95,22 @@ class Period(BaseModel):
 
   ``id`` is a content-derived, cross-filing-stable identifier so periods
   dedupe. Dates are already normalized (Arelle's exclusive next-midnight has
-  been rolled back by one day at parse time).
+  been rolled back by one day at parse time). The calendar fields are a
+  deterministic enrichment derived from the dates (not raw XBRL) — they place a
+  period on a common calendar axis so "which quarter/year is this" is legible
+  without re-deriving it: ``duration_type`` buckets the day span,
+  ``calendar_year``/``calendar_quarter`` normalize by the end date, and
+  ``calendar_period_key`` is a compact label (``2026Q1`` / ``2026`` / a date).
   """
 
   id: str
   period_type: PeriodType
   start: date | None = None
   end: date | None = None
+  duration_type: DurationType | None = None
+  calendar_year: int | None = None
+  calendar_quarter: str | None = None
+  calendar_period_key: str | None = None
 
 
 class Unit(BaseModel):
@@ -101,12 +123,17 @@ class Unit(BaseModel):
 
 
 class DimQualifier(BaseModel):
-  """One dimensional coordinate on a fact's context (segment/scenario member)."""
+  """One dimensional coordinate on a fact's context (segment/scenario member).
+
+  ``axis_type`` records whether the coordinate came from the context's
+  ``<segment>`` or ``<scenario>`` (resolved per-dimension, not per-context).
+  """
 
   axis_qname: str
   member_qname: str | None = None
   typed_value: str | None = None
   is_explicit: bool = True
+  axis_type: AxisType | None = None
 
 
 class XbrlFact(BaseModel):
@@ -125,10 +152,17 @@ class XbrlFact(BaseModel):
 
 
 class Arc(BaseModel):
-  """One linkbase relationship (parent → child), qname-addressed."""
+  """One linkbase relationship (parent → child), qname-addressed.
+
+  ``arcrole`` is the full arcrole URI. For presentation/calculation it is the
+  parent-child / summation-item role; for definition networks it distinguishes
+  the XBRL-dimensions wiring (all / hypercube-dimension / dimension-domain /
+  domain-member / dimension-default), which ``Network.kind`` alone collapses.
+  """
 
   from_qname: str
   to_qname: str
+  arcrole: str | None = None
   order: float | None = None
   weight: float | None = None
   preferred_label: str | None = None

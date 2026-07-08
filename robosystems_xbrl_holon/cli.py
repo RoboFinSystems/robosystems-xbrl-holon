@@ -1,7 +1,7 @@
 """Command-line interface — a SEC filing to a portable ``holon.jsonld``.
 
-    holon build --cik 320193 --accno 0000320193-23-000106 -o report.holon.jsonld
-    holon fetch --ticker NVDA --form 10-K --n 1 -o ./out
+    holon build --cik 320193 --accno 0000320193-23-000106   # -> output/<accno>.holon.jsonld
+    holon fetch --ticker NVDA --form 10-K --n 1              # -> output/
 
 Wires the three layers: ``edgar`` (fetch) -> ``parse`` (Arelle -> XbrlModel) ->
 ``serialize`` (XbrlModel -> holon.jsonld).
@@ -21,6 +21,10 @@ from .model import FilingMeta, XbrlModel
 from .parse import close, load_model, to_xbrl_model
 from .serialize import to_holon
 
+# Generated holons land here by default — a git-tracked folder whose contents are
+# git-ignored (see output/.gitignore). Relative to the working directory.
+DEFAULT_OUTPUT_DIR = Path("output")
+
 
 def _parse_date(value: str | None) -> date | None:
   if not value:
@@ -36,6 +40,7 @@ def _build_one(
 ) -> XbrlModel:
   """Fetch one filing, parse it, and write its holon to ``out_path``."""
   ref = client.get_filing_ref(cik, accession)
+  info = client.company_info(cik)
   with tempfile.TemporaryDirectory() as tmp:
     target = download_filing(client, cik, accession, Path(tmp))
     mx = load_model(target, cache_dir=cache_dir)
@@ -46,7 +51,13 @@ def _build_one(
         form=ref.form or None,
         filing_date=_parse_date(ref.filing_date),
       )
-      model = to_xbrl_model(mx, filing)
+      model = to_xbrl_model(
+        mx,
+        filing,
+        entity_name=info.name,
+        entity_ein=info.ein,
+        entity_ticker=info.ticker,
+      )
     finally:
       close(mx.modelManager.cntlr)
   out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -65,8 +76,26 @@ def _config_from_args(args: argparse.Namespace) -> Config:
 def _cmd_build(args: argparse.Namespace) -> int:
   config = _config_from_args(args)
   client = EdgarClient(config=config)
-  out = Path(args.out)
+  out = (
+    Path(args.out) if args.out else DEFAULT_OUTPUT_DIR / f"{args.accno}.holon.jsonld"
+  )
   _build_one(client, args.cik, args.accno, out, config.arelle_cache_dir)
+  return 0
+
+
+def _cmd_query(args: argparse.Namespace) -> int:
+  from .query import fact_grid, load_holon
+
+  graph = load_holon(args.infile)
+  rows = fact_grid(
+    graph,
+    elements=args.element or None,
+    periods=args.period or None,
+    period_type=args.period_type,
+  )
+  for r in rows:
+    print(f"{r.end_date or '':<12} {r.qname:<55} {r.value:>20,.4f}  {r.measure or ''}")
+  print(f"({len(rows)} consolidated facts)", file=sys.stderr)
   return 0
 
 
@@ -101,7 +130,12 @@ def build_parser() -> argparse.ArgumentParser:
   b.add_argument(
     "--accno", required=True, help="Accession number, e.g. 0000320193-23-000106."
   )
-  b.add_argument("-o", "--out", default="report.holon.jsonld", help="Output path.")
+  b.add_argument(
+    "-o",
+    "--out",
+    default=None,
+    help="Output path (default: output/<accession>.holon.jsonld).",
+  )
   b.set_defaults(func=_cmd_build)
 
   f = sub.add_parser("fetch", help="Fetch N filings for a ticker.")
@@ -110,8 +144,31 @@ def build_parser() -> argparse.ArgumentParser:
   f.add_argument(
     "--n", type=int, default=1, help="Number of most-recent filings (default 1)."
   )
-  f.add_argument("-o", "--out", default=".", help="Output directory.")
+  f.add_argument(
+    "-o",
+    "--out",
+    default=str(DEFAULT_OUTPUT_DIR),
+    help="Output directory (default: output/).",
+  )
   f.set_defaults(func=_cmd_fetch)
+
+  q = sub.add_parser(
+    "query", help="Query consolidated facts in a holon.jsonld (in-memory SPARQL)."
+  )
+  q.add_argument("--in", dest="infile", required=True, help="Path to a holon.jsonld.")
+  q.add_argument(
+    "--element", action="append", help="Element qname filter, e.g. us-gaap:Assets."
+  )
+  q.add_argument(
+    "--period", action="append", help="Period end date YYYY-MM-DD (repeatable)."
+  )
+  q.add_argument(
+    "--period-type",
+    choices=["instant", "annual", "quarterly"],
+    dest="period_type",
+    help="Restrict to instant / annual-duration / quarterly-duration facts.",
+  )
+  q.set_defaults(func=_cmd_query)
   return parser
 
 
