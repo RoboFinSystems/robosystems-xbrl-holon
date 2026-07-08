@@ -349,6 +349,21 @@ def test_item_type_value_domain() -> None:
       name="EntityRegistrantName",
       item_type="stringItemType",
     ),
+    "us-gaap:EarningsPerShareBasic": Concept(
+      qname="us-gaap:EarningsPerShareBasic",
+      namespace="",
+      name="EarningsPerShareBasic",
+      is_numeric=True,
+      item_type="perShareItemType",
+    ),
+    "us-gaap:SharesOutstanding": Concept(
+      qname="us-gaap:SharesOutstanding",
+      namespace="",
+      name="SharesOutstanding",
+      is_numeric=True,
+      is_shares=True,
+      item_type="sharesItemType",
+    ),
   }
   model = XbrlModel(
     filing=FilingMeta(accession="0000000000-24-000010", cik="0000000001"),
@@ -363,6 +378,10 @@ def test_item_type_value_domain() -> None:
   assert item["us-gaap:PolicyTextBlock"] == "textBlock"
   assert item["us-gaap:Assets"] == "monetary"
   assert item["dei:EntityRegistrantName"] == "string"
+  # Per-share and share counts must be distinguishable so a renderer opts them
+  # out of statement rescaling (else EPS rounds to 0 in a scaled statement).
+  assert item["us-gaap:EarningsPerShareBasic"] == "perShare"
+  assert item["us-gaap:SharesOutstanding"] == "shares"
 
 
 def test_report_node_carries_filing_metadata() -> None:

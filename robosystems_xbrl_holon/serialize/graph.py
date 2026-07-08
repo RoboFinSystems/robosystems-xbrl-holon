@@ -220,13 +220,24 @@ def _item_type(concept: Concept) -> str:
   """
   if concept.is_textblock:
     return "textBlock"
-  if concept.is_numeric:
-    if (concept.item_type or "").startswith("monetary"):
-      return "monetary"
-    if concept.is_shares:
-      return "shares"
-    return "decimal"
   raw = (concept.item_type or "").lower()
+  if concept.is_numeric:
+    # Distinguish the numeric domains a renderer must format/scale differently —
+    # per-share and share counts never rescale by the statement factor, percent
+    # scales to %, etc. Mirrors the SEC adapter's deriveNumericKind.
+    if raw.startswith("monetary"):
+      return "monetary"
+    if "pershare" in raw:
+      return "perShare"
+    if concept.is_shares or "shares" in raw:
+      return "shares"
+    if "percent" in raw:
+      return "percent"
+    if "pure" in raw:
+      return "pure"
+    if concept.is_integer or "integer" in raw:
+      return "integer"
+    return "decimal"
   if "date" in raw:
     return "date"
   if "boolean" in raw:
