@@ -7,18 +7,6 @@ Convert SEC XBRL filings into `holon.jsonld` documents that render in the
 
 ## Install
 
-Use it as a published package, or from source with `just`.
-
-### As a package
-
-```bash
-pip install robosystems-xbrl-holon
-```
-
-This exposes the `holon` CLI (`holon build …`, `holon fetch …`, `holon query …`).
-
-### From source (development)
-
 ```bash
 # Install the toolchain
 brew install uv just
@@ -28,7 +16,11 @@ just install
 ```
 
 `just install` creates `.env` from `.env.example` on first run — then set your
-SEC User-Agent in it (see [SEC User-Agent](#sec-user-agent)).
+SEC User-Agent in it (see [SEC User-Agent](#sec-user-agent)). It exposes the
+`holon` CLI (`holon build …`, `holon fetch …`, `holon query …`).
+
+> Not yet published. Once it's on PyPI, you'll be able to `pip install
+> robosystems-xbrl-holon` to use it as a dependency in another project.
 
 ## SEC User-Agent
 
@@ -41,7 +33,7 @@ set your details there:
 SEC_GOV_USER_AGENT="Your Name your@email.com"
 ```
 
-`.env` is loaded automatically by every command. For a `pip`-installed package,
+`.env` is loaded automatically by every command. Outside the `just` workflow,
 `export SEC_GOV_USER_AGENT="Your Name your@email.com"` or pass `--user-agent`.
 
 ## Usage
@@ -54,7 +46,7 @@ just holon-build 320193 0000320193-23-000106
 just holon-fetch NVDA
 ```
 
-Or with the packaged CLI:
+Or call the `holon` CLI directly:
 
 ```bash
 holon build --cik 320193 --accno 0000320193-23-000106
