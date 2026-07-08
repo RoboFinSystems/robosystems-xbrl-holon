@@ -48,18 +48,17 @@ SEC_GOV_USER_AGENT="Your Name your@email.com"
 
 ```bash
 # Build a holon.jsonld from a specific filing (-> ./output/)
-just holon-build 320193 0000320193-23-000106
+holon build --cik 320193 --accno 0000320193-23-000106
 
 # Fetch the latest filing for a ticker (-> ./output/)
-just holon-fetch NVDA
-```
-
-Or call the `holon` CLI directly:
-
-```bash
-holon build --cik 320193 --accno 0000320193-23-000106
 holon fetch --ticker NVDA
+
+# Query consolidated facts in a built holon (in-memory SPARQL)
+holon query --in output/0000320193-23-000106.holon.jsonld --element us-gaap:Assets
 ```
+
+From a source checkout, `just` wraps the same CLI as a shorthand:
+`just holon-build 320193 0000320193-23-000106` and `just holon-fetch NVDA`.
 
 ## View & explore
 
