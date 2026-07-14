@@ -15,8 +15,13 @@ venv:
 # Install dependencies (provisions .env from the template on first run)
 install:
     @test -f {{_env}} || cp .env.example {{_env}}
+    @just install-hooks
     uv pip install -e ".[dev]"
     uv sync --all-extras
+
+# Install git hooks (points core.hooksPath at .githooks; idempotent, safe to re-run)
+install-hooks:
+    git config core.hooksPath .githooks
 
 # Update dependencies
 update:
