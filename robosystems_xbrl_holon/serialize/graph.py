@@ -120,7 +120,7 @@ def build_holon_graph(model: XbrlModel, *, report_id: str | None = None) -> Grap
   _add_units(g, model, root)
 
   structures = _plan_structures(model)
-  _add_structures(g, structures, root)
+  _add_structures(g, structures, root, model)
 
   dim_uris = _add_dimensions(g, model, root)
   membership = _fact_membership(model, structures)
@@ -316,7 +316,29 @@ def _plan_structures(model: XbrlModel) -> dict[str, _Structure]:
   return structs
 
 
-def _add_structures(g: Graph, structures: dict[str, _Structure], root: URIRef) -> None:
+def _preferred_label_text(model: XbrlModel, qname: str, role: str) -> str | None:
+  """The concept's label under the arc's preferred-label role (English first).
+
+  The filer chooses per presentation arc which label variant renders — terse,
+  total, negated, … — so the string must come from the label linkbase entry for
+  that exact role, not the concept's standard label.
+  """
+  concept = model.concepts.get(qname)
+  if concept is None:
+    return None
+  fallback: str | None = None
+  for label in concept.labels:
+    if label.role != role or not label.value:
+      continue
+    if label.language is None or label.language.startswith("en"):
+      return label.value
+    fallback = fallback or label.value
+  return fallback
+
+
+def _add_structures(
+  g: Graph, structures: dict[str, _Structure], root: URIRef, model: XbrlModel
+) -> None:
   for st in structures.values():
     s_uri = _scoped(root, "structure", st.slug)
     g.add((s_uri, RDF.type, RS.Structure))
@@ -350,6 +372,14 @@ def _add_structures(g: Graph, structures: dict[str, _Structure], root: URIRef) -
           g.add((a_uri, XLINK["from"], _concept_uri(arc.from_qname)))
           g.add((a_uri, XLINK.to, _concept_uri(arc.to_qname)))
           g.add((a_uri, RS.associationType, Literal(kind)))
+          # The filer's per-arc label choice: the role URI (negated* roles carry
+          # the display-sign semantic) plus the resolved label string, so a
+          # consumer needs no label-linkbase lookup of its own.
+          if kind == "presentation" and arc.preferred_label:
+            g.add((a_uri, RS.preferredLabelRole, Literal(arc.preferred_label)))
+            text = _preferred_label_text(model, arc.to_qname, arc.preferred_label)
+            if text:
+              g.add((a_uri, RS.preferredLabel, Literal(text)))
           if arc.arcrole:
             g.add((a_uri, XLINK.arcrole, _arcrole_uri(arc.arcrole)))
           g.add((a_uri, XLINK.role, URIRef(st.role_uri)))
