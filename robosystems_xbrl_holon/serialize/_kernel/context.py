@@ -54,6 +54,10 @@ CANONICAL_CONTEXT: dict = {
   "us-gaap-2022": "http://fasb.org/us-gaap/2022-01-31#",
   "us-gaap-2024": "http://fasb.org/us-gaap/2024-01-31#",
   "us-gaap": "http://fasb.org/us-gaap/",
+  # srt — the SEC Reporting Taxonomy (ConsolidationItemsAxis, range axes,
+  # geographical axes, …). Year-normalized like us-gaap, so srt concepts get
+  # their real FASB namespace instead of the robosystems concept fallback.
+  "srt": "http://fasb.org/srt/",
   # rs-gaap — RoboSystems's year-independent canonical reporting
   # taxonomy. Our namespace for concepts that previously lived under
   # us-gaap-2017; equivalence arcs bridge rs-gaap ↔ external us-gaap
