@@ -69,6 +69,7 @@ _PREFIX_NS: dict[str, Namespace] = {
   "rs-gaap": Namespace("https://robosystems.ai/taxonomy/rs-gaap/v1/"),
   "fac": Namespace("http://www.xbrlsite.com/fac#"),
   "us-gaap": Namespace("http://fasb.org/us-gaap/"),
+  "srt": Namespace("http://fasb.org/srt/"),
   "ifrs": Namespace("http://xbrl.ifrs.org/taxonomy/"),
   "dei": Namespace("http://xbrl.sec.gov/dei/"),
   "disclosures": Namespace("https://robosystems.ai/taxonomy/rs-gaap/disclosures/v1/"),
