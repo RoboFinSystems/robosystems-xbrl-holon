@@ -118,7 +118,10 @@ CANONICAL_CONTEXT: dict = {
   "order": {"@id": "link:order", "@type": "xsd:decimal"},
   "weight": {"@id": "link:weight", "@type": "xsd:decimal"},
   "associationType": {"@id": f"{RS_VOCAB}associationType"},
+  # Per-arc preferred label: the resolved string the filer chose for this row
+  # plus the label role URI (negated* roles carry the display-sign semantic).
   "preferredLabel": {"@id": f"{RS_VOCAB}preferredLabel"},
+  "preferredLabelRole": {"@id": f"{RS_VOCAB}preferredLabelRole"},
   # Labels
   "label": "rdfs:label",
   "altLabel": "skos:altLabel",

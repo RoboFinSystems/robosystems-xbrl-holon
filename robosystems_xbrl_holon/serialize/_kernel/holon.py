@@ -35,6 +35,8 @@ Both call :func:`build_holon_dataset`, so the holon is derived one way.
 
 from __future__ import annotations
 
+import json
+
 from rdflib import RDF, Dataset, Graph, URIRef
 
 from .bundle import StatementBundle
@@ -161,13 +163,42 @@ def serialize_holon_jsonld_from_graph(g: Graph, root: URIRef) -> str:
   entire built-in prefix registry into ``@context``.
   """
   ds = build_holon_dataset(g, root)
-  return ds.serialize(
+  text = ds.serialize(
     format="json-ld",
     auto_compact=True,
     context=_build_context(),
     indent=2,
     sort_keys=True,
   )
+  return _sort_graph_arrays(text)
+
+
+def _sort_graph_arrays(text: str) -> str:
+  """Sort every ``@graph`` array by ``@id`` — and every string-valued property
+  array — so serialization is byte-stable across runs.
+
+  ``sort_keys`` orders dict keys but rdflib emits ``@graph`` node arrays and
+  multi-valued property arrays (``@type``, ``hasAssociation``, ``factSet``) in
+  hash order, so the same report shuffles between runs — noisy diffs for any
+  holon checked into a repo. Neither order carries RDF meaning (the holon uses
+  no ``@list``), so both are safe to sort.
+  """
+  doc = json.loads(text)
+
+  def sort_node(node: object) -> None:
+    if isinstance(node, dict):
+      for key, value in node.items():
+        if not isinstance(value, list):
+          continue
+        if key == "@graph":
+          value.sort(key=lambda n: n.get("@id", "") if isinstance(n, dict) else "")
+        elif all(isinstance(v, str) for v in value):
+          value.sort()
+        for child in value:
+          sort_node(child)
+
+  sort_node(doc)
+  return json.dumps(doc, indent=2, sort_keys=True, ensure_ascii=False)
 
 
 def serialize_to_holon_jsonld(bundle: StatementBundle) -> str:

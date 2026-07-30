@@ -18,6 +18,7 @@ from robosystems_xbrl_holon.model import (
   DimQualifier,
   EntityIdentity,
   FilingMeta,
+  Label,
   Network,
   Period,
   Unit,
@@ -429,3 +430,45 @@ def test_dimensional_facts_emitted_and_partitioned() -> None:
     if isinstance(e, dict) and str(e.get("@id", "")).endswith("#scene")
   )
   assert any("rs:Dimension" in _types(n) for n in scene)
+
+
+NEGATED_TERSE = "http://www.xbrl.org/2009/role/negatedTerseLabel"
+
+
+def test_presentation_arc_preferred_label() -> None:
+  """A presentation arc's preferred-label role and resolved string are emitted."""
+  model = _model()
+  model.concepts["us-gaap:Cash"].labels.append(
+    Label(value="Less cash", role=NEGATED_TERSE, language="en-US")
+  )
+  model.networks[0].arcs[0].preferred_label = NEGATED_TERSE
+
+  doc = json.loads(to_holon(model))
+  pres = [
+    n
+    for n in _all_nodes(doc)
+    if "rs:Association" in _types(n) and n.get("associationType") == "presentation"
+  ]
+  assert pres, "expected a presentation association"
+  assert pres[0]["preferredLabelRole"] == NEGATED_TERSE
+  assert pres[0]["preferredLabel"] == "Less cash"
+
+
+def test_arc_without_preferred_label_emits_none() -> None:
+  """Arcs with no preferred-label role carry neither property."""
+  doc = json.loads(to_holon(_model()))
+  for n in _all_nodes(doc):
+    if "rs:Association" in _types(n):
+      assert "preferredLabel" not in n
+      assert "preferredLabelRole" not in n
+
+
+def test_holon_serialization_is_deterministic() -> None:
+  """Same model, same bytes — and every @graph array is @id-sorted."""
+  model = _model()
+  assert to_holon(model) == to_holon(model)
+  doc = json.loads(to_holon(model))
+  for entry in doc.get("@graph", []):
+    if isinstance(entry, dict) and isinstance(entry.get("@graph"), list):
+      ids = [n.get("@id", "") for n in entry["@graph"] if isinstance(n, dict)]
+      assert ids == sorted(ids)
