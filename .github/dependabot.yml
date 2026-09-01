@@ -1,5 +1,25 @@
 version: 2
+
 updates:
+  # Python — uv dependencies in pyproject.toml
+  - package-ecosystem: 'uv'
+    directory: '/'
+    schedule:
+      interval: 'monthly'
+    labels:
+      - 'dependencies'
+    # This is a published library with open `>=` constraints and no committed
+    # lockfile, which is correct for a library but limits what Dependabot can
+    # propose: a `>=X` requirement is already satisfied by every newer release,
+    # so routine version-bump PRs will be rare. The coverage is still worth
+    # declaring — it puts the dependency graph in place, which is what security
+    # advisories are matched against. Tighten constraints or commit a lock if
+    # routine bump PRs are wanted too.
+    # No groups: these packages (arelle-release, rdflib, pyshacl, httpx,
+    # pydantic) are unrelated and move independently, so there is no
+    # version-coupled family to keep in lockstep the way the backend has for
+    # opentelemetry, dagster and dbt.
+
   # GitHub Actions — pinned action versions
   - package-ecosystem: 'github-actions'
     directory: '/'
@@ -7,3 +27,23 @@ updates:
       interval: 'monthly'
     labels:
       - 'dependencies'
+    groups:
+      github-actions:
+        patterns:
+          - '*'
+        update-types:
+          - 'minor'
+          - 'patch'
+    ignore:
+      # Held across the fleet: the robosystems backend pins v8.3.2 and ignores
+      # majors because v9 flipped `prune-cache` to false and would grow its uv
+      # cache. This repo stays on v9.0.0 — pinned by SHA now — rather than
+      # being moved to match the backend's exact version, because neither v9's
+      # nor v10's breaking change bites here: no workflow triggers on release,
+      # pull_request_target or workflow_run, which is the only surface v10's
+      # cache guard touches. What the fleet shares is the rule, not the version
+      # number. Drop this entry when the backend takes a setup-uv major, and
+      # move in step with it.
+      - dependency-name: 'astral-sh/setup-uv'
+        update-types:
+          - 'version-update:semver-major'
