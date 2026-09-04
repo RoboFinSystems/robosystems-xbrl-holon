@@ -244,6 +244,12 @@ def _make_concept(mx: ModelXbrl, concept: Any) -> Concept:
     is_integer=bool(getattr(concept, "isInteger", False)),
     substitution_group=str(subgroup) if subgroup is not None else None,
     item_type=type_qname.localName if type_qname is not None else None,
+    item_type_qname=str(type_qname) if type_qname is not None else None,
+    item_type_namespace=(
+      getattr(type_qname, "namespaceURI", None) if type_qname is not None else None
+    ),
+    base_xsd_type=getattr(concept, "baseXsdType", None) or None,
+    nillable=str(getattr(concept, "nillable", "false")).lower() == "true",
     is_text_fact=bool(
       getattr(getattr(concept, "type", None), "isOimTextFactType", False)
     ),
@@ -446,6 +452,7 @@ def _make_networks(
           weight=float(weight) if weight is not None else None,
           preferred_label=getattr(r, "preferredLabel", None),
           is_root=frm in roots,
+          target_role=getattr(r, "targetRole", None) or None,
         )
       )
     if not arcs:

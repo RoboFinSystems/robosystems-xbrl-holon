@@ -189,7 +189,8 @@ def test_pure_units_are_omitted() -> None:
 
 def test_language_applies_to_text_facts_only() -> None:
   """Both facts carry an xml:lang; only the string-derived one takes it."""
-  assert _by_concept("us-gaap:Policy")["dimensions"]["language"] == "en-US"
+  # xBRL-JSON requires the lower-case form; the filing said en-US.
+  assert _by_concept("us-gaap:Policy")["dimensions"]["language"] == "en-us"
   assert "language" not in _by_concept("us-gaap:Flag")["dimensions"]
 
 

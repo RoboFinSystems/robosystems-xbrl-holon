@@ -31,18 +31,32 @@ for the other. That report is the substantive output of the exercise.
 Written against the prose of PWD-2026-09-01 and checked against the eight
 example models published with the draft's demo. There is still no
 ``tavi-schema.json`` to validate against, so :data:`SPEC_AMBIGUITIES` records
-where the draft is unclear or contradicts itself and what this emitter chose —
-the examples confirm every one of those choices.
+where the draft is unclear or contradicts itself and what this emitter chose.
+
+It was then diffed, object class by object class, against the compiled model
+Arelle's ``XbrlModel`` plugin (Arelle PR #2418, unreleased) writes for the same
+filing — the same exercise the OIM projection ran against ``saveLoadableOIM``.
+Where the two disagreed and the draft decided it, this emitter was fixed
+(period literals, the entity SQName, fact language, the pure and shares
+datatypes, root sources, nillable, hypercube headings); where the draft did not
+decide it, the disagreement is recorded below as an ambiguity.
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import date
 
-from ..model import Arc, Concept, Network, Period, XbrlModel
+from ..model import Arc, Concept, Network, Period, XbrlFact, XbrlModel
 from ..namespaces import TAVI_REPORT_BASE
+from ._values import (
+  CIK_PREFIX,
+  CIK_SCHEME,
+  entity_sqname,
+  language_tag,
+  period_interval,
+)
 
 TAVI_VERSION = "PWD-2026-09-01"
 TAVI_BASE = "https://xbrl.org/PWD/2026-09-01"
@@ -71,7 +85,12 @@ REPORT_PREFIX = "rpt"
 # correctness bug that a validator would not catch.
 ITEM_TYPE_DATATYPES: dict[str, str] = {
   "monetaryItemType": "xbrlr:monetary",
-  "pureItemType": "xbrlr:pure",
+  # xbrlr:pure is the *unit* (Appendix E); the datatype it measures is pureType.
+  "pureItemType": "xbrlr:pureType",
+  # No core datatype types a share count. The accounting module the draft
+  # reserves the xbrla prefix for defines one, per the copy Arelle ships — see
+  # SPEC_AMBIGUITIES: shares-datatype-in-unpublished-module.
+  "sharesItemType": "xbrla:sharesType",
   "percentItemType": "xbrlr:percent",
   "perShareItemType": "xbrlr:perShare",
   "textBlockItemType": "xbrlr:textBlock",
@@ -101,12 +120,33 @@ ITEM_TYPE_DATATYPES: dict[str, str] = {
   "integerItemType": "xs:integer",
   "decimalItemType": "xs:decimal",
   "QNameItemType": "xs:QName",
+  # Extensible enumerations have a built-in datatype; the domain a concept
+  # restricts its values to (enum2:domain) is not in the model yet.
+  "enumerationItemType": "xbrlr:enumeration",
+  "enumerationSetItemType": "xbrlr:enumeration",
 }
 
 # Item types with no built-in Tavi datatype at all — a gap in the model, not in
 # this emitter. Kept separate so the gap report does not blame the spec for our
-# own unmapped types.
-ITEM_TYPES_WITHOUT_BUILTIN: frozenset[str] = frozenset({"sharesItemType"})
+# own unmapped types. Empty since the share count moved to the accounting module.
+ITEM_TYPES_WITHOUT_BUILTIN: frozenset[str] = frozenset()
+
+# XML Schema simple types a custom datatype object may name as its baseType.
+# Anything Arelle reports outside this set (anyType, the xbrli unions) falls
+# back to xs:string, the base every text-derived item type shares.
+XSD_SIMPLE_TYPES: frozenset[str] = frozenset(
+  {
+    "string", "boolean", "decimal", "float", "double", "duration", "dateTime",
+    "time", "date", "gYearMonth", "gYear", "gMonthDay", "gDay", "gMonth",
+    "hexBinary", "base64Binary", "anyURI", "QName", "NOTATION",
+    "normalizedString", "token", "language", "NMTOKEN", "NMTOKENS", "Name",
+    "NCName", "ID", "IDREF", "IDREFS", "ENTITY", "ENTITIES", "integer",
+    "nonPositiveInteger", "negativeInteger", "long", "int", "short", "byte",
+    "nonNegativeInteger", "unsignedLong", "unsignedInt", "unsignedShort",
+    "unsignedByte", "positiveInteger", "yearMonthDuration", "dayTimeDuration",
+    "dateTimeStamp",
+  }
+)  # fmt: skip
 
 # Label role URI -> Tavi label type QName. Section 14.6 keeps the XBRL 2.1 and
 # Link Role Registry roles and addresses them by QName instead of URI; this map
@@ -169,6 +209,9 @@ DEFAULT_LABEL_TYPE = "xbrl:label"
 
 PRESENTATION_RELATIONSHIP = "xbrl:parent-child"
 CALCULATION_RELATIONSHIP = "xbrl:summation-item"
+# Section 10.4: the virtual origin a network root is anchored to. Not rendered;
+# it exists so several roots can be declared and ordered.
+ROOT_SOURCE = "xbrl:rootSource"
 
 # Points where PWD-2026-09-01 is unclear or contradicts itself, and the reading
 # this emitter took. Carried in the output so a reviewer sees the assumptions
@@ -182,21 +225,28 @@ SPEC_AMBIGUITIES: tuple[dict[str, str], ...] = (
       "all six namespaces-map examples and the built-in model bind it to the "
       "http form. Section 4.2.2 requires a reserved alias to carry exactly its "
       "prescribed URI (oimce:invalidURIForReservedAlias), so the examples are "
-      "invalid against the table."
+      "invalid against the table. Arelle's XbrlModel plugin has the same split: "
+      "https in its reserved-prefix constants, http in every resource it ships "
+      "and in the documents it writes."
     ),
     "choice": "http form — it is XML Schema's real namespace and the examples agree.",
   },
   {
-    "id": "no-shares-datatype",
-    "where": "built-in datatypes (Appendix E)",
+    "id": "shares-datatype-in-unpublished-module",
+    "where": "built-in datatypes (Appendix E) vs. section 2.4's xbrla prefix",
     "issue": (
-      "There is no shares datatype. xbrlr:perShare exists for per-share values "
-      "but nothing types a share count, which every equity filing reports. A "
-      "taxonomy can define one via a datatype object with a unitType, so this "
-      "is a standardisation gap rather than an impossibility — but it means "
-      "each filer invents their own."
+      "No core datatype types a share count, which every equity filing reports; "
+      "xbrlr:perShare exists but nothing it divides by. Section 2.4 reserves "
+      "xbrla for an accounting module and an example imports "
+      "../spec-taxonomies/xbrla.json, but the draft does not publish that "
+      "module. The copy Arelle ships defines xbrla:sharesType, a unit "
+      "xbrla:shares, and xbrla:MonetaryPerShare."
     ),
-    "choice": "sharesItemType is left unmapped and recorded as a datatype gap.",
+    "choice": (
+      "sharesItemType maps to xbrla:sharesType and the shares unit to "
+      "xbrla:shares, on the strength of the reference implementation's copy; "
+      "perShareItemType keeps the built-in xbrlr:perShare."
+    ),
   },
   {
     "id": "xbrlr-decimal-undefined",
@@ -205,9 +255,12 @@ SPEC_AMBIGUITIES: tuple[dict[str, str], ...] = (
       "The unit examples use dataType xbrlr:decimal, which is not defined in "
       "the built-in model and is not an XML Schema built-in, so those examples "
       "raise oimte:invalidQNameReference against the unit object's own "
-      "constraint."
+      "constraint. Arelle's types module does not define it either."
     ),
-    "choice": "xs:decimal is used for unit datatypes instead.",
+    "choice": (
+      "a unit's dataType is the datatype of what it measures — xbrlr:monetary "
+      "for a currency, xbrla:sharesType for shares — and xs:decimal otherwise."
+    ),
   },
   {
     "id": "duplicate-label-uris",
@@ -223,32 +276,83 @@ SPEC_AMBIGUITIES: tuple[dict[str, str], ...] = (
       ".../positivePeriodEndTotalLabel have no binding at all, so a filing "
       "using either Link Role Registry role has nothing to map to. The prose "
       "table in section 14.6 gives each type its matching URI, so the core "
-      "model is the copy that is wrong."
+      "model is the copy that is wrong. The core.json Arelle ships carries the "
+      "same two duplicates."
     ),
     "choice": "the prose URIs are used, which restores a 1:1 role/type mapping.",
   },
   {
-    "id": "reconciliation-required-but-unused",
-    "where": "section 14.3.2 vs. the published example models",
+    "id": "domain-vs-domainNetwork",
+    "where": "Appendix B vs. section 5.10.1",
     "issue": (
-      "The prose states that xbrl:reconciliation is required on "
-      "xbrl:summation-item relationships, but none of the eight example models "
-      "published with the draft carries it, though they use xbrl:weight on "
-      "those same relationships 42 times. Either the examples are invalid or "
-      "the requirement is not one."
+      "Appendix B names the cube dimension's domain property `domain`; section "
+      "5.10.1, all twenty uses across the eight example models, and Arelle's "
+      "converter name it `domainNetwork`."
     ),
-    "choice": "the prose is followed and the property is emitted.",
+    "choice": "domainNetwork.",
   },
   {
-    "id": "instant-date-only",
-    "where": "section 8.5.2.2",
+    "id": "reconciliation-required-but-unused",
+    "where": "section 14.3.2 vs. section 14.3.4 and the published example models",
     "issue": (
-      "A date-only instant resolves to T00:00:00 of the following day, so a "
-      "bare 2024-12-31 means end-of-day 2024-12-31 — the inclusive reading a "
-      "filing intends. Emitting dateTime instead would require rolling the "
-      "date forward by one day."
+      "Section 14.3.2 states that xbrl:reconciliation is required on "
+      "xbrl:summation-item relationships, while section 14.3.4 defines it as a "
+      "boolean whose true value marks a relationship as a reconciliation exempt "
+      "from the weight/balance rule (and calls it xbrla:reconciliation there). "
+      "A required boolean of that meaning forces every converter to assert "
+      "something false on every ordinary relationship. None of the eight "
+      "example models carries it, though they use xbrl:weight on those same "
+      "relationships 42 times, and Arelle's core model lists it as allowed, "
+      "not required."
     ),
-    "choice": "date-only literals throughout, so no roll-forward is applied.",
+    "choice": (
+      "not emitted: an XBRL 2.1 calculation arc carries no reconciliation flag, "
+      "so there is nothing true to write."
+    ),
+  },
+  {
+    "id": "period-literal-form",
+    "where": "section 8.5.2.2 vs. xbrlr:periodString (Appendix E) vs. the examples",
+    "issue": (
+      "Section 8.5.2.2 calls xbrl:period an ISO 8601 interval and says no more. "
+      "The built-in xbrlr:periodString requires xs:dateTime values in canonical "
+      "form and states that the time component cannot be omitted "
+      "(oimce:invalidPeriodRepresentation). The examples write twelve instants "
+      "as bare dates and durations in both forms."
+    ),
+    "choice": (
+      "the datatype's form — dateTime with an exclusive end, identical to "
+      "xBRL-JSON and to Arelle's converter, so a fact's period literal is the "
+      "same in both projections of one filing."
+    ),
+  },
+  {
+    "id": "language-case",
+    "where": "section 5.7 (xbrl:languageDomain) vs. xBRL-JSON's language rule",
+    "issue": (
+      "The language domain's example value is fr-CA. xBRL-JSON requires the "
+      "lower-case form (xbrlje:invalidLanguageCodeCase), and Arelle applies "
+      "that rule to a Tavi fact — so its own converter flags its own en-US "
+      "output. BCP 47 tags are case-insensitive, so either form names the "
+      "same language."
+    ),
+    "choice": (
+      "lower case on facts, as xBRL-JSON; label languages keep the filing's "
+      "literal, as the examples' labels do."
+    ),
+  },
+  {
+    "id": "fact-value-literal-type",
+    "where": "section 8.4.1 vs. the published example models",
+    "issue": (
+      "The fact value's `value` is typed xs:anyType. The examples write 244 "
+      "numeric values as JSON strings and 42 as JSON numbers; Arelle's "
+      "converter writes strings."
+    ),
+    "choice": (
+      "strings — the reported lexical value, which is also what xBRL-JSON "
+      "mandates and what keeps a large or precise decimal exact."
+    ),
   },
 )
 
@@ -267,6 +371,9 @@ class GapReport:
   # Item types this emitter has not mapped yet. A finding against us — most are
   # taxonomy-defined (dei:*) and belong in a taxonomy, not the built-in model.
   item_types_unmapped_here: dict[str, int] = field(default_factory=dict)
+  # Item types with no built-in mapping that were carried as datatype objects
+  # (name + baseType) so the concept keeps its real type. Not a gap: a record.
+  custom_datatypes: dict[str, int] = field(default_factory=dict)
   unmapped_label_roles: dict[str, int] = field(default_factory=dict)
   dropped_period_semantics: list[dict[str, object]] = field(default_factory=list)
   facts_without_cube: int = 0
@@ -285,6 +392,7 @@ class GapReport:
       },
       "against_this_emitter": {
         "item_types_unmapped_here": dict(sorted(self.item_types_unmapped_here.items())),
+        "custom_datatypes": dict(sorted(self.custom_datatypes.items())),
         "unmapped_label_roles": dict(sorted(self.unmapped_label_roles.items())),
         "facts_without_cube": self.facts_without_cube,
         "dimensional_facts": self.dimensional_facts,
@@ -306,11 +414,15 @@ def to_tavi_report(
   report_id = report_id or model.filing.accession
   gaps = GapReport()
   namespaces = _namespaces(model, report_id)
+  prefix_for_uri = {uri: prefix for prefix, uri in namespaces.items()}
+  default_language = _default_language(model)
 
   dimensional = _dimensional(model)
-  concepts, headings = _concepts_and_headings(model, gaps, dimensional)
+  concepts, headings, datatypes = _concepts_and_headings(
+    model, gaps, dimensional, prefix_for_uri
+  )
   networks, groups, group_contents, group_labels = _networks_and_groups(
-    model, report_id
+    model, dimensional, default_language
   )
 
   xbrl_model: dict[str, object] = {
@@ -319,6 +431,7 @@ def to_tavi_report(
     "properties": _model_properties(model),
     "entities": _entities(model),
     "units": _units(model),
+    "dataTypes": datatypes,
     "concepts": concepts,
     "headings": headings,
     "dimensions": dimensional.dimensions,
@@ -326,7 +439,7 @@ def to_tavi_report(
     "domainNetworks": dimensional.domain_networks,
     "members": dimensional.members,
     "cubes": dimensional.cubes,
-    "labels": _labels(model, gaps, dimensional) + group_labels,
+    "labels": _labels(model, gaps, default_language) + group_labels,
     "networks": networks,
     "groups": groups,
     "groupContents": group_contents,
@@ -366,6 +479,9 @@ class Dimensional:
   claimed: set[str] = field(default_factory=set)
   # (all axes, required axes) per positive cube, for the section 8.5.2.5 check.
   cube_spaces: list[tuple[frozenset[str], frozenset[str]]] = field(default_factory=list)
+  # cube name -> the extended link role whose definition linkbase declared its
+  # hypercube, so the cube can join that role's group (section 10.2).
+  cube_roles: dict[str, str] = field(default_factory=dict)
 
   def covers(self, signature: frozenset[str]) -> bool:
     """Whether some positive cube admits a fact carrying exactly ``signature``.
@@ -392,7 +508,7 @@ DIM_DIMENSION_DEFAULT = "http://xbrl.org/int/dim/arcrole/dimension-default"
 # Core dimensions are declared optional on every reconstructed cube: an XBRL
 # hypercube constrains taxonomy dimensions only, and section 5.10.1's `optional`
 # is what lets facts that omit a core dimension still fall inside the cube.
-OPTIONAL_CORE_DIMENSIONS = ("xbrl:period", "xbrl:entity", "xbrl:unit")
+OPTIONAL_CORE_DIMENSIONS = ("xbrl:period", "xbrl:entity", "xbrl:unit", "xbrl:language")
 
 
 def _report_namespace(report_id: str) -> str:
@@ -400,85 +516,119 @@ def _report_namespace(report_id: str) -> str:
 
 
 def _dimensional(model: XbrlModel) -> Dimensional:
-  """Rebuild cubes, dimensions, domains and members from definition networks."""
+  """Rebuild cubes, dimensions, domains and members from definition networks.
+
+  The traversal is XBRL Dimensions 1.0's, per base set: a hypercube's axes are
+  the ``hypercube-dimension`` arcs in the role its ``all`` arc names, an
+  axis's domain is the ``dimension-domain`` arc in *that* role, and so on down
+  the members — each hop continuing in the previous arc's ``targetRole`` where
+  one is set. A filing reuses one hypercube element across many sections with
+  different axes and members, so cubes are one per (role, hypercube) and
+  domain networks one per (cube, axis). Keying either on the element's QName
+  alone, as this pass once did, unions every section into every cube — which
+  the diff against Arelle's converter showed as cubes with axes and members
+  their sections never declared.
+  """
   out = Dimensional()
-  by_arcrole: dict[str, list[Arc]] = {}
+  # arcs by (role, arcrole): the unit of XDT traversal is the base set.
+  by_role: dict[str, dict[str, list[Arc]]] = {}
+  roles_in_order: list[str] = []
   for network in model.networks:
     if network.kind != "definition":
       continue
+    if network.role_uri not in by_role:
+      roles_in_order.append(network.role_uri)
+    bucket = by_role.setdefault(network.role_uri, {})
     for arc in network.arcs:
-      by_arcrole.setdefault(arc.arcrole or "", []).append(arc)
+      bucket.setdefault(arc.arcrole or "", []).append(arc)
 
-  # axis -> the domain element it points at (dimension-domain).
-  axis_domains: dict[str, str] = {
-    arc.from_qname: arc.to_qname for arc in by_arcrole.get(DIM_DIMENSION_DOMAIN, [])
-  }
-  # domain-member arcs, grouped by their source, form each domain's member tree.
-  members_by_parent: dict[str, list[Arc]] = {}
-  for arc in by_arcrole.get(DIM_DOMAIN_MEMBER, []):
-    members_by_parent.setdefault(arc.from_qname, []).append(arc)
+  def arcs_from(role: str, arcrole: str, source: str) -> list[Arc]:
+    return [a for a in by_role.get(role, {}).get(arcrole, []) if a.from_qname == source]
+
   # An axis with a default member is one a fact may omit: XBRL fills the gap
   # with the default, which is exactly what Tavi's `optional` cube dimension
-  # means (section 5.10.1). The two constructs line up one-to-one.
+  # means (section 5.10.1). Defaults are declared once, globally.
   defaulted_axes: frozenset[str] = frozenset(
-    arc.from_qname for arc in by_arcrole.get(DIM_DIMENSION_DEFAULT, [])
+    arc.from_qname
+    for bucket in by_role.values()
+    for arc in bucket.get(DIM_DIMENSION_DEFAULT, [])
   )
-  # hypercube -> its axes.
-  axes_by_hypercube: dict[str, list[str]] = {}
-  for arc in by_arcrole.get(DIM_HYPERCUBE_DIMENSION, []):
-    axes_by_hypercube.setdefault(arc.from_qname, []).append(arc.to_qname)
 
+  dimensions: dict[str, dict[str, object]] = {}
+  domain_classes: dict[str, dict[str, object]] = {}
   member_domain_classes: dict[str, set[str]] = {}
-  domain_network_names: dict[str, str] = {}
+  # Identical domain networks (same root, same edges) across sections share one
+  # object; there is nothing to distinguish them by.
+  domain_network_names: dict[tuple[str, tuple[tuple[str, str], ...]], str] = {}
+  cube_count = 0
 
-  for axis in sorted(axes_by_hypercube_axes(axes_by_hypercube)):
-    domain = axis_domains.get(axis)
-    out.claimed.add(axis)
-    dimension: dict[str, object] = {"name": axis}
-    if domain is None:
-      # A typed dimension has no domain element; its values conform to a
-      # datatype instead (section 5.7).
-      out.dimensions.append(dimension)
-      continue
+  for role in roles_in_order:
+    seen_hypercubes: set[str] = set()
+    for all_arc in by_role[role].get(DIM_ALL, []):
+      hypercube = all_arc.to_qname
+      if hypercube in seen_hypercubes:
+        continue  # several primary items sharing one hypercube: one cube
+      seen_hypercubes.add(hypercube)
+      out.claimed.add(hypercube)
+      hypercube_role = all_arc.target_role or role
 
-    out.claimed.add(domain)
-    dimension["domainClass"] = domain
-    out.dimensions.append(dimension)
-    out.domain_classes.append({"name": domain})
+      axes: list[str] = []
+      cube_networks: dict[str, str] = {}
+      for hd in arcs_from(hypercube_role, DIM_HYPERCUBE_DIMENSION, hypercube):
+        axis = hd.to_qname
+        if axis in axes:
+          continue
+        axes.append(axis)
+        out.claimed.add(axis)
+        axis_role = hd.target_role or hypercube_role
+        domain_arcs = arcs_from(axis_role, DIM_DIMENSION_DOMAIN, axis)
+        if not domain_arcs:
+          # A typed dimension has no domain element; its values conform to a
+          # datatype instead (section 5.7).
+          dimensions.setdefault(axis, {"name": axis})
+          continue
+        domain = domain_arcs[0].to_qname
+        out.claimed.add(domain)
+        dimensions.setdefault(axis, {"name": axis, "domainClass": domain})
+        domain_classes.setdefault(domain, {"name": domain})
 
-    relationships: list[dict[str, object]] = []
-    for source, target in _walk_domain(domain, members_by_parent):
-      out.claimed.add(target)
-      member_domain_classes.setdefault(target, set()).add(domain)
-      relationships.append({"source": source, "target": target})
-    network_name = f"{REPORT_PREFIX}:domain-{len(domain_network_names)}"
-    domain_network_names[axis] = network_name
-    out.domain_networks.append(
-      {"name": network_name, "root": domain, "relationships": relationships}
-    )
+        edges = _walk_domain(domain, domain_arcs[0].target_role or axis_role, arcs_from)
+        for _, target in edges:
+          out.claimed.add(target)
+          member_domain_classes.setdefault(target, set()).add(domain)
+        key = (domain, tuple(edges))
+        network_name = domain_network_names.get(key)
+        if network_name is None:
+          network_name = f"{REPORT_PREFIX}:domain-{len(domain_network_names)}"
+          domain_network_names[key] = network_name
+          out.domain_networks.append(
+            {
+              "name": network_name,
+              "root": domain,
+              "relationships": [
+                {"source": source, "target": target} for source, target in edges
+              ],
+            }
+          )
+        cube_networks[axis] = network_name
 
+      cube_name = f"{REPORT_PREFIX}:cube-{cube_count}"
+      cube_count += 1
+      out.cube_roles[cube_name] = role
+      out.cubes.append(
+        {
+          "name": cube_name,
+          "cubeDimensions": _cube_dimensions(axes, cube_networks, defaulted_axes),
+        }
+      )
+      out.cube_spaces.append((frozenset(axes), frozenset(axes) - defaulted_axes))
+
+  out.dimensions = [dimensions[axis] for axis in sorted(dimensions)]
+  out.domain_classes = [domain_classes[d] for d in sorted(domain_classes)]
   for member in sorted(member_domain_classes):
     out.members.append(
       {"name": member, "domainClasses": sorted(member_domain_classes[member])}
     )
-
-  excluded: dict[str, list[str]] = {}
-  cube_names: dict[str, str] = {}
-  for arc in by_arcrole.get(DIM_NOT_ALL, []):
-    excluded.setdefault(arc.to_qname, []).append(arc.from_qname)
-
-  for hypercube in sorted({arc.to_qname for arc in by_arcrole.get(DIM_ALL, [])}):
-    out.claimed.add(hypercube)
-    axes = sorted(set(axes_by_hypercube.get(hypercube, ())))
-    cube_name = f"{REPORT_PREFIX}:cube-{len(cube_names)}"
-    cube_names[hypercube] = cube_name
-    out.cubes.append(
-      {
-        "name": cube_name,
-        "cubeDimensions": _cube_dimensions(axes, domain_network_names, defaulted_axes),
-      }
-    )
-    out.cube_spaces.append((frozenset(axes), frozenset(axes) - defaulted_axes))
 
   # Section 8.5.2.5 requires every fact to fall inside some positive cube, and
   # undimensioned facts fall inside none of the hypercubes above. An open cube
@@ -487,16 +637,11 @@ def _dimensional(model: XbrlModel) -> Dimensional:
   out.cubes.append(
     {
       "name": f"{REPORT_PREFIX}:cube-undimensioned",
-      "cubeDimensions": _cube_dimensions([], domain_network_names, defaulted_axes),
+      "cubeDimensions": _cube_dimensions([], {}, defaulted_axes),
     }
   )
   out.cube_spaces.append((frozenset(), frozenset()))
   return out
-
-
-def axes_by_hypercube_axes(axes_by_hypercube: dict[str, list[str]]) -> set[str]:
-  """Every axis referenced by any hypercube."""
-  return {axis for axes in axes_by_hypercube.values() for axis in axes}
 
 
 def _cube_dimensions(
@@ -527,19 +672,25 @@ def _cube_dimensions(
 
 
 def _walk_domain(
-  root: str, members_by_parent: dict[str, list[Arc]]
+  root: str,
+  role: str,
+  arcs_from: Callable[[str, str, str], list[Arc]],
 ) -> list[tuple[str, str]]:
-  """Flatten a domain-member tree into source/target pairs, cycle-safe."""
+  """Flatten a domain-member tree into source/target pairs, cycle-safe.
+
+  Each hop is looked up in the previous arc's ``targetRole`` where one is
+  set, else in the role the walk is already in.
+  """
   pairs: list[tuple[str, str]] = []
   seen: set[str] = {root}
-  queue = [root]
+  queue: list[tuple[str, str]] = [(root, role)]
   while queue:
-    parent = queue.pop(0)
-    for arc in members_by_parent.get(parent, ()):
+    parent, current_role = queue.pop(0)
+    for arc in arcs_from(current_role, DIM_DOMAIN_MEMBER, parent):
       pairs.append((parent, arc.to_qname))
       if arc.to_qname not in seen:
         seen.add(arc.to_qname)
-        queue.append(arc.to_qname)
+        queue.append((arc.to_qname, arc.target_role or current_role))
   return pairs
 
 
@@ -552,18 +703,32 @@ def _namespaces(model: XbrlModel, report_id: str) -> dict[str, str]:
   """
   namespaces = dict(RESERVED_NAMESPACES)
   namespaces[REPORT_PREFIX] = _report_namespace(report_id)
+  # The entity scheme: the SQName ``cik:0000066740`` needs it bound.
+  namespaces[CIK_PREFIX] = CIK_SCHEME
 
   by_uri = {uri: prefix for prefix, uri in namespaces.items()}
   for concept in model.concepts.values():
-    uri = concept.namespace
-    if not uri or uri in by_uri:
-      continue
-    prefix = concept.qname.split(":", 1)[0] if ":" in concept.qname else None
-    if not prefix or prefix in namespaces:
-      prefix = f"ns{len(namespaces)}"
-    namespaces[prefix] = uri
-    by_uri[uri] = prefix
+    _bind(namespaces, by_uri, concept.qname, concept.namespace)
+    # An item type with no built-in equivalent becomes a datatype object named
+    # by its own QName, so its namespace needs a prefix too.
+    if concept.item_type_qname and concept.item_type_namespace:
+      local = concept.item_type_qname.split(":", 1)[-1]
+      if local not in ITEM_TYPE_DATATYPES:
+        _bind(namespaces, by_uri, concept.item_type_qname, concept.item_type_namespace)
   return namespaces
+
+
+def _bind(
+  namespaces: dict[str, str], by_uri: dict[str, str], qname: str, uri: str
+) -> None:
+  """Bind ``uri`` under the prefix ``qname`` carries, or a generated one."""
+  if not uri or uri in by_uri:
+    return
+  prefix = qname.split(":", 1)[0] if ":" in qname else None
+  if not prefix or prefix in namespaces:
+    prefix = f"ns{len(namespaces)}"
+  namespaces[prefix] = uri
+  by_uri[uri] = prefix
 
 
 def _model_properties(model: XbrlModel) -> list[dict[str, object]]:
@@ -579,89 +744,196 @@ def _model_properties(model: XbrlModel) -> list[dict[str, object]]:
   return properties
 
 
+def _default_language(model: XbrlModel) -> str:
+  """The language the filing reports its text in, for labels that have none.
+
+  A label object requires a language (section 5.14.1) and an extended link
+  role's definition carries none, so the group labels made from those
+  definitions take the tag the filing's own text facts carry — ``en`` when
+  the filing has no text facts at all.
+  """
+  tags = [fact.language for fact in model.facts if fact.language]
+  if not tags:
+    return "en"
+  return max(set(tags), key=tags.count)
+
+
 def _entities(model: XbrlModel) -> list[dict[str, object]]:
-  """The reporting entity (section 8.1). Identity is the SQName."""
-  return [{"name": _entity_qname(model.entity.cik)}]
+  """The reporting entity (section 8.1).
 
-
-def _entity_qname(cik: str) -> str:
-  return f"{REPORT_PREFIX}:cik-{cik}"
+  An entity's SQName "includes the scheme and the identifier", so the SEC
+  scheme is the namespace and the CIK the local name — ``cik:0000066740``, the
+  same name the OIM projection writes and Arelle's converter emits. It was
+  previously minted under this report's own namespace, which dropped the
+  scheme and gave two converters of one filing two different entities.
+  """
+  return [{"name": entity_sqname(model.entity.cik)}]
 
 
 def _units(model: XbrlModel) -> list[dict[str, object]]:
-  """Unit objects (section 8.2). ISO-4217 units resolve to the reserved prefix."""
+  """Unit objects (section 8.2), one per distinct measure the facts use.
+
+  A unit's ``dataType`` is the datatype of what it measures. A pure unit is
+  not an object at all — it is no unit (section 8.5.2.3). A composite measure
+  cannot be a QName, so it becomes a unit object of this report whose
+  ``compositeUnitRepresentation`` is the unit string the facts carry, which is
+  how section 8.2 says a reported unit string resolves to a defined unit.
+  """
   units: list[dict[str, object]] = []
   seen: set[str] = set()
   for unit in model.units:
     qname = _unit_qname(unit.measure)
-    if qname in seen:
+    if qname is None or qname in seen:
       continue
     seen.add(qname)
-    units.append({"name": qname, "dataType": "xs:decimal"})
+    if "/" in qname or "*" in qname:
+      units.append(
+        {
+          "name": f"{REPORT_PREFIX}:unit-{len(seen)}",
+          "dataType": _unit_datatype(qname),
+          "compositeUnitRepresentation": [qname],
+        }
+      )
+    else:
+      units.append({"name": qname, "dataType": _unit_datatype(qname)})
   return units
 
 
-def _unit_qname(measure: str) -> str:
-  """Normalise a measure token to a Tavi unit QName."""
+def _unit_datatype(unit: str) -> str:
+  """The datatype of a value measured in ``unit``; xs:decimal when unknown."""
+  numerator, _, denominator = unit.partition("/")
+  if numerator.startswith("iso4217:"):
+    if denominator == "xbrla:shares":
+      return "xbrlr:perShare"
+    return "xbrlr:monetary" if not denominator else "xs:decimal"
+  if unit == "xbrla:shares":
+    return "xbrla:sharesType"
+  return "xs:decimal"
+
+
+def _unit_qname(measure: str) -> str | None:
+  """A measure token as the unit a Tavi fact carries, or ``None`` for pure.
+
+  A pure unit is no unit (section 8.5.2.3). A share count is measured in the
+  accounting module's unit. Anything else keeps the filing's own token: an
+  ISO 4217 code is already a QName under the reserved prefix, a bare UTR token
+  is bound to ``utr``, and a composite measure (``iso4217:USD/xbrli:shares``)
+  becomes the unit string representation section 8.2 says a fact may carry.
+  """
+  measure = measure.strip()
+  if "/" in measure or "*" in measure:
+    return "/".join(
+      "*".join(_measure_qname(part) or "xbrlr:pure" for part in side.split("*"))
+      for side in measure.split("/")
+    )
+  return _measure_qname(measure)
+
+
+def _measure_qname(measure: str) -> str | None:
+  local = measure.rsplit(":", 1)[-1]
+  if local == "pure":
+    return None
+  if local == "shares":
+    return "xbrla:shares"
   if ":" in measure:
     return measure
   return f"utr:{measure}"
 
 
 def _concepts_and_headings(
-  model: XbrlModel, gaps: GapReport, dimensional: Dimensional
-) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+  model: XbrlModel,
+  gaps: GapReport,
+  dimensional: Dimensional,
+  prefix_for_uri: dict[str, str],
+) -> tuple[list[dict[str, object]], list[dict[str, object]], list[dict[str, object]]]:
   """Split concepts into concept objects and heading objects.
 
   Section 5.3: a heading is an object with no reportable value that is still a
-  component of the concept dimension — exactly an abstract XBRL element.
+  component of the concept dimension — exactly an abstract XBRL element. A
+  hypercube is one too: it is abstract, and the presentation tree hangs the
+  axes and line items under it, so it must exist as an object for those
+  relationships to resolve. Its dimensional meaning lives in the cube object
+  the ``all`` arc became, under a different name, so there is no collision.
 
-  Elements the dimensional pass claimed (axes, domains, members, hypercubes)
-  are excluded: in Tavi they are dimension, domain class, member and cube
-  objects, and emitting them here as well would collide on the name
-  (``oimte:duplicateObjects``). In XBRL they are all ``<xs:element>``, which is
-  precisely the flattening Tavi undoes.
+  Elements the dimensional pass claimed (axes, domains, members) are excluded:
+  in Tavi they are dimension, domain class and member objects, and emitting
+  them here as well would collide on the name (``oimte:duplicateObjects``). In
+  XBRL they are all ``<xs:element>``, which is precisely the flattening Tavi
+  undoes.
+
+  Returns the concepts, the headings, and the datatype objects (section 11.1)
+  the concepts reference — one per taxonomy-defined item type.
   """
   concepts: list[dict[str, object]] = []
   headings: list[dict[str, object]] = []
+  datatypes: dict[str, dict[str, object]] = {}
 
   for qname in sorted(model.concepts):
-    if qname in dimensional.claimed:
-      continue
     concept = model.concepts[qname]
+    if qname in dimensional.claimed and not concept.is_hypercube_item:
+      continue
     if concept.is_abstract:
       headings.append({"name": qname})
       continue
 
     obj: dict[str, object] = {"name": qname}
-    datatype = _datatype_for(concept, gaps)
+    datatype = _datatype_for(concept, gaps, prefix_for_uri, datatypes)
     if datatype:
       obj["dataType"] = datatype
     if concept.period_type:
       obj["periodType"] = concept.period_type
+    if concept.nillable:
+      # Section 5.2: nillable defaults to false, and a nil fact on a concept
+      # that does not declare it is an error. Every us-gaap concept declares it.
+      obj["nillable"] = True
     properties = _concept_properties(concept)
     if properties:
       obj["properties"] = properties
     concepts.append(obj)
 
-  return concepts, headings
+  return concepts, headings, list(datatypes.values())
 
 
-def _datatype_for(concept: Concept, gaps: GapReport) -> str | None:
-  """Map an XBRL item type to a Tavi datatype, recording anything unmapped."""
+def _datatype_for(
+  concept: Concept,
+  gaps: GapReport,
+  prefix_for_uri: dict[str, str],
+  datatypes: dict[str, dict[str, object]],
+) -> str | None:
+  """The concept's datatype: a built-in where one exists, else its own.
+
+  An item type with no built-in equivalent — dei:yesNoItemType, the DTR's
+  percentItemType, a filer's own enumeration — is neither dropped nor folded to
+  its base. It becomes a datatype object (section 11.1) named by its own QName
+  with the XML Schema type it derives from, which is what Arelle's converter
+  does and what keeps the concept's real type in the model. A concept requires
+  a datatype, so an unmapped type used to leave the object invalid.
+  """
   item_type = concept.item_type
   if not item_type:
     return None
   local = item_type.split(":", 1)[-1]
   datatype = ITEM_TYPE_DATATYPES.get(local)
-  if datatype is None:
-    bucket = (
-      gaps.item_types_without_builtin
-      if local in ITEM_TYPES_WITHOUT_BUILTIN
-      else gaps.item_types_unmapped_here
-    )
-    bucket[local] = bucket.get(local, 0) + 1
-  return datatype
+  if datatype is not None:
+    return datatype
+  prefix = prefix_for_uri.get(concept.item_type_namespace or "")
+  if prefix:
+    name = f"{prefix}:{local}"
+    if name not in datatypes:
+      base = concept.base_xsd_type or ""
+      datatypes[name] = {
+        "name": name,
+        "baseType": f"xs:{base}" if base in XSD_SIMPLE_TYPES else "xs:string",
+      }
+    gaps.custom_datatypes[name] = gaps.custom_datatypes.get(name, 0) + 1
+    return name
+  bucket = (
+    gaps.item_types_without_builtin
+    if local in ITEM_TYPES_WITHOUT_BUILTIN
+    else gaps.item_types_unmapped_here
+  )
+  bucket[local] = bucket.get(local, 0) + 1
+  return None
 
 
 def _concept_properties(concept: Concept) -> list[dict[str, object]]:
@@ -673,15 +945,15 @@ def _concept_properties(concept: Concept) -> list[dict[str, object]]:
 
 
 def _labels(
-  model: XbrlModel, gaps: GapReport, dimensional: Dimensional
+  model: XbrlModel, gaps: GapReport, default_language: str
 ) -> list[dict[str, object]]:
   """Label objects (section 5.14): free-standing, pointing at ``forObject``.
 
   ``forObject`` is "any", so a label on an axis, domain or member is emitted
   unchanged — those objects still exist in the model, just under a different
-  object type than they had in XBRL.
+  object type than they had in XBRL. A label's language is required; a label
+  that arrived without one takes the filing's.
   """
-  _ = dimensional
   labels: list[dict[str, object]] = []
   for qname in sorted(model.concepts):
     for label in model.concepts[qname].labels:
@@ -690,19 +962,19 @@ def _labels(
         role = label.role or "(none)"
         gaps.unmapped_label_roles[role] = gaps.unmapped_label_roles.get(role, 0) + 1
         label_type = DEFAULT_LABEL_TYPE
-      entry: dict[str, object] = {
-        "forObject": qname,
-        "labelType": label_type,
-        "value": label.value,
-      }
-      if label.language:
-        entry["language"] = label.language
-      labels.append(entry)
+      labels.append(
+        {
+          "forObject": qname,
+          "labelType": label_type,
+          "value": label.value,
+          "language": label.language or default_language,
+        }
+      )
   return labels
 
 
 def _networks_and_groups(
-  model: XbrlModel, report_id: str
+  model: XbrlModel, dimensional: Dimensional, default_language: str
 ) -> tuple[
   list[dict[str, object]],
   list[dict[str, object]],
@@ -712,14 +984,42 @@ def _networks_and_groups(
   """Networks (section 10.3) plus the groups (section 10.1) that carry them.
 
   An extended link role becomes a group: Tavi's group is the report section an
-  ELR has always stood for. Definition networks are held back for the cube
-  pass — their arcroles are the raw material for ``cubeObject``.
+  ELR has always stood for, and it carries that role's presentation and
+  calculation networks and the cube its definition linkbase declared.
+  Definition networks themselves are held back for the cube pass — their
+  arcroles are the raw material for ``cubeObject``.
   """
   networks: list[dict[str, object]] = []
   groups: list[dict[str, object]] = []
   group_contents: list[dict[str, object]] = []
   group_labels: list[dict[str, object]] = []
   group_names: dict[str, str] = {}
+  definitions: dict[str, str] = {}
+  for network in model.networks:
+    if network.definition and network.role_uri not in definitions:
+      definitions[network.role_uri] = network.definition
+
+  def group_for(role_uri: str) -> str:
+    group_name = group_names.get(role_uri)
+    if group_name is None:
+      group_name = f"{REPORT_PREFIX}:group-{len(group_names)}"
+      group_names[role_uri] = group_name
+      groups.append({"name": group_name, "groupURI": role_uri})
+      definition = definitions.get(role_uri)
+      if definition:
+        # An extended link role's human-readable definition becomes a label on
+        # the group, which is how the specification's own examples name a
+        # group. A label requires a language (section 5.14.1); the definition
+        # has none, so it takes the filing's.
+        group_labels.append(
+          {
+            "forObject": group_name,
+            "labelType": DEFAULT_LABEL_TYPE,
+            "value": definition,
+            "language": default_language,
+          }
+        )
+    return group_name
 
   for index, network in enumerate(model.networks):
     if network.kind == "definition":
@@ -730,34 +1030,31 @@ def _networks_and_groups(
       else CALCULATION_RELATIONSHIP
     )
     name = f"{REPORT_PREFIX}:network-{network.kind}-{index}"
+    # Section 10.4: a network root is the target of a relationship whose source
+    # is xbrl:rootSource. Those come first, so the roots read before the tree.
     roots = sorted({arc.from_qname for arc in network.arcs if arc.is_root})
-    entry: dict[str, object] = {
-      "name": name,
-      "relationshipTypeName": relationship_type,
-      "relationships": [_relationship(arc, network) for arc in network.arcs],
-    }
-    if roots:
-      entry["roots"] = roots
-    networks.append(entry)
+    relationships: list[dict[str, object]] = [
+      {"source": ROOT_SOURCE, "target": root, "order": float(position)}
+      for position, root in enumerate(roots, start=1)
+    ]
+    relationships.extend(_relationship(arc, network) for arc in network.arcs)
+    networks.append(
+      {
+        "name": name,
+        "relationshipTypeName": relationship_type,
+        "relationships": relationships,
+      }
+    )
+    group_contents.append({"groupName": group_for(network.role_uri), "forObject": name})
 
-    group_name = group_names.get(network.role_uri)
-    if group_name is None:
-      group_name = f"{REPORT_PREFIX}:group-{len(group_names)}"
-      group_names[network.role_uri] = group_name
-      groups.append({"name": group_name, "groupURI": network.role_uri})
-      if network.definition:
-        # An extended link role's human-readable definition becomes a label on
-        # the group, which is how the specification's own examples name a
-        # group. It was previously written as an invented
-        # `xbrl:groupDescription` property, which no property type defines.
-        group_labels.append(
-          {
-            "forObject": group_name,
-            "labelType": DEFAULT_LABEL_TYPE,
-            "value": network.definition,
-          }
-        )
-    group_contents.append({"groupName": group_name, "forObject": name})
+  # A cube joins the section whose definition linkbase declared its hypercube
+  # (section 10.2: group contents name cubes as well as networks).
+  for cube in dimensional.cubes:
+    role_uri = dimensional.cube_roles.get(str(cube["name"]))
+    if role_uri:
+      group_contents.append(
+        {"groupName": group_for(role_uri), "forObject": cube["name"]}
+      )
 
   return networks, groups, group_contents, group_labels
 
@@ -769,9 +1066,9 @@ def _relationship(arc: Arc, network: Network) -> dict[str, object]:
     entry["order"] = arc.order
   properties: list[dict[str, object]] = []
   if network.kind == "calculation" and arc.weight is not None:
-    # Section 14.3.1: weight is required on summation-item.
+    # Section 14.3.1: weight is required on summation-item. Reconciliation is
+    # deliberately absent — SPEC_AMBIGUITIES: reconciliation-required-but-unused.
     properties.append({"property": "xbrl:weight", "value": arc.weight})
-    properties.append({"property": "xbrl:reconciliation", "value": True})
   if arc.preferred_label:
     label_type = LABEL_ROLE_TYPES.get(arc.preferred_label)
     if label_type:
@@ -792,18 +1089,35 @@ def _facts(
   """
   periods = {period.id: period for period in model.periods}
   units = {unit.id: unit for unit in model.units}
-  entity_qname = _entity_qname(model.entity.cik)
+  entity = entity_sqname(model.entity.cik)
   facts: list[dict[str, object]] = []
 
   for index, fact in enumerate(model.facts):
+    concept = model.concepts.get(fact.concept_qname)
     period = periods.get(fact.period_id)
     dimensions: dict[str, object] = {"xbrl:concept": fact.concept_qname}
     if period is not None:
       dimensions["xbrl:period"] = _period_value(period)
       _record_period_semantics(period, gaps)
-    dimensions["xbrl:entity"] = entity_qname
+    dimensions["xbrl:entity"] = entity
     if fact.unit_id and fact.unit_id in units:
-      dimensions["xbrl:unit"] = _unit_qname(units[fact.unit_id].measure)
+      unit = _unit_qname(units[fact.unit_id].measure)
+      # A pure unit is equivalent to no unit, and a numeric fact without one is
+      # read as xbrlr:pure (section 8.5.2.3), so the dimension is omitted — the
+      # same convention as xBRL-JSON.
+      if unit is not None:
+        dimensions["xbrl:unit"] = unit
+    # The language dimension applies to text facts (section 8.3), and the fact
+    # value carries the same tag (section 8.4.1); both are written, as Arelle's
+    # converter does. The parse captures the tag; it was previously dropped
+    # here — the same fidelity bug the OIM diff found in the parse, one layer up.
+    language = (
+      language_tag(fact.language)
+      if concept is not None and concept.is_text_fact
+      else None
+    )
+    if language:
+      dimensions["xbrl:language"] = language
 
     for qualifier in fact.dims:
       value = qualifier.member_qname or qualifier.typed_value
@@ -816,39 +1130,50 @@ def _facts(
     if not dimensional.covers(signature):
       gaps.facts_without_cube += 1
 
-    value = fact.value_str if fact.value_kind == "text" else fact.numeric_value
-    fact_value: dict[str, object] = {"value": value}
-    if fact.decimals is not None:
-      decimals = _decimals(fact.decimals)
-      if decimals is not None:
-        fact_value["decimals"] = decimals
-
-    facts.append(
-      {
-        "name": f"{REPORT_PREFIX}:f-{index}",
-        "factDimensions": dimensions,
-        "factValues": [fact_value],
-      }
-    )
+    entry: dict[str, object] = {
+      "name": f"{REPORT_PREFIX}:f-{index}",
+      "factDimensions": dimensions,
+    }
+    if not fact.is_nil:
+      # A nil fact has no fact value; a reported one has exactly one, carrying
+      # the lexical value as a string (SPEC_AMBIGUITIES: fact-value-literal-type).
+      fact_value: dict[str, object] = {"value": _fact_value(fact)}
+      if language:
+        fact_value["language"] = language
+      if fact.decimals is not None:
+        decimals = _decimals(fact.decimals)
+        if decimals is not None:
+          fact_value["decimals"] = decimals
+      entry["factValues"] = [fact_value]
+    facts.append(entry)
   return facts
 
 
-def _period_value(period: Period) -> str:
-  """A period as an ISO 8601 interval (section 8.5.2.2).
+def _fact_value(fact: XbrlFact) -> str | None:
+  """The reported lexical value, as a string.
 
-  Date-only literals throughout: a bare end date resolves to T00:00:00 of the
-  following day, which is the inclusive reading the filing intends, so the
-  parse's already-rolled-back dates are emitted unchanged.
+  The parse keeps the value as reported (``value_str``) for every fact; the
+  numeric form is a convenience derived from it. A number is written from the
+  lexical value, not the float, so ``24575000000`` does not become
+  ``24575000000.0`` and a precise decimal is not rounded through binary.
   """
-  if period.period_type == "instant":
-    return _iso(period.end or period.start)
-  if period.period_type == "forever":
-    return "0001-01-01/9999-12-31"
-  return f"{_iso(period.start)}/{_iso(period.end)}"
+  if fact.value_str is not None:
+    return fact.value_str
+  if fact.numeric_value is None:
+    return None
+  number = fact.numeric_value
+  return str(int(number)) if number.is_integer() else repr(number)
 
 
-def _iso(value: date | None) -> str:
-  return value.isoformat() if value else ""
+def _period_value(period: Period) -> str:
+  """A period as an ISO 8601 interval of dateTimes (section 8.5.2.2).
+
+  The built-in ``xbrlr:periodString`` requires ``xs:dateTime`` values with the
+  time component present, so the parse's human-facing dates are rolled forward
+  onto the exclusive end — the same literal the OIM projection writes for the
+  same fact. See SPEC_AMBIGUITIES: period-literal-form.
+  """
+  return period_interval(period)
 
 
 def _record_period_semantics(period: Period, gaps: GapReport) -> None:

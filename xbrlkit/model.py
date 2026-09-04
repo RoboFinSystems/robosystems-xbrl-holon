@@ -86,6 +86,16 @@ class Concept(BaseModel):
   is_integer: bool = False
   substitution_group: str | None = None
   item_type: str | None = None
+  # The item type's QName and namespace, so a projection can name it — a
+  # taxonomy-defined type (dei:yesNoItemType) becomes a datatype object in Tavi
+  # rather than being folded to its base — and the XML Schema simple type it
+  # ultimately derives from (Arelle's baseXsdType: "string", "decimal", …).
+  item_type_qname: str | None = None
+  item_type_namespace: str | None = None
+  base_xsd_type: str | None = None
+  # xsi:nillable on the element. Tavi defaults it to false and a nil fact on a
+  # concept that does not declare it is an error; every us-gaap concept does.
+  nillable: bool = False
   # Whether facts of this concept are OIM "text facts" — string-derived, and
   # not one of the DTR no-language item types. This is what decides whether the
   # OIM language dimension applies, and it is the same line Tavi draws for its
@@ -183,6 +193,11 @@ class Arc(BaseModel):
   weight: float | None = None
   preferred_label: str | None = None
   is_root: bool = False
+  # xbrldt:targetRole on a dimensional arc: the extended link role in which the
+  # *next* hop of the hypercube→dimension→domain→member traversal is found.
+  # Absent, the traversal stays in the arc's own role. A cube rebuilt without
+  # following it loses every axis or member a filing declared in another role.
+  target_role: str | None = None
 
 
 class Network(BaseModel):
