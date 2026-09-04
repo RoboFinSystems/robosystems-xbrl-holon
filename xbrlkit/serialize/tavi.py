@@ -28,10 +28,11 @@ returns a :class:`GapReport` alongside the document, split into what the model
 cannot express and what this emitter has not mapped yet, so neither is blamed
 for the other. That report is the substantive output of the exercise.
 
-Written against the prose of PWD-2026-09-01. The draft references a
-``tavi-schema.json`` that is not published, so nothing here is validated
-against an authoritative schema; :data:`SPEC_AMBIGUITIES` records where the
-draft is unclear or self-contradictory and what this emitter chose.
+Written against the prose of PWD-2026-09-01 and checked against the eight
+example models published with the draft's demo. There is still no
+``tavi-schema.json`` to validate against, so :data:`SPEC_AMBIGUITIES` records
+where the draft is unclear or contradicts itself and what this emitter chose —
+the examples confirm every one of those choices.
 """
 
 from __future__ import annotations
@@ -227,6 +228,18 @@ SPEC_AMBIGUITIES: tuple[dict[str, str], ...] = (
     "choice": "the prose URIs are used, which restores a 1:1 role/type mapping.",
   },
   {
+    "id": "reconciliation-required-but-unused",
+    "where": "section 14.3.2 vs. the published example models",
+    "issue": (
+      "The prose states that xbrl:reconciliation is required on "
+      "xbrl:summation-item relationships, but none of the eight example models "
+      "published with the draft carries it, though they use xbrl:weight on "
+      "those same relationships 42 times. Either the examples are invalid or "
+      "the requirement is not one."
+    ),
+    "choice": "the prose is followed and the property is emitted.",
+  },
+  {
     "id": "instant-date-only",
     "where": "section 8.5.2.2",
     "issue": (
@@ -296,7 +309,9 @@ def to_tavi_report(
 
   dimensional = _dimensional(model)
   concepts, headings = _concepts_and_headings(model, gaps, dimensional)
-  networks, groups, group_contents = _networks_and_groups(model, report_id)
+  networks, groups, group_contents, group_labels = _networks_and_groups(
+    model, report_id
+  )
 
   xbrl_model: dict[str, object] = {
     "name": f"{REPORT_PREFIX}:Report",
@@ -311,7 +326,7 @@ def to_tavi_report(
     "domainNetworks": dimensional.domain_networks,
     "members": dimensional.members,
     "cubes": dimensional.cubes,
-    "labels": _labels(model, gaps, dimensional),
+    "labels": _labels(model, gaps, dimensional) + group_labels,
     "networks": networks,
     "groups": groups,
     "groupContents": group_contents,
@@ -688,7 +703,12 @@ def _labels(
 
 def _networks_and_groups(
   model: XbrlModel, report_id: str
-) -> tuple[list[dict[str, object]], list[dict[str, object]], list[dict[str, object]]]:
+) -> tuple[
+  list[dict[str, object]],
+  list[dict[str, object]],
+  list[dict[str, object]],
+  list[dict[str, object]],
+]:
   """Networks (section 10.3) plus the groups (section 10.1) that carry them.
 
   An extended link role becomes a group: Tavi's group is the report section an
@@ -698,6 +718,7 @@ def _networks_and_groups(
   networks: list[dict[str, object]] = []
   groups: list[dict[str, object]] = []
   group_contents: list[dict[str, object]] = []
+  group_labels: list[dict[str, object]] = []
   group_names: dict[str, str] = {}
 
   for index, network in enumerate(model.networks):
@@ -723,15 +744,22 @@ def _networks_and_groups(
     if group_name is None:
       group_name = f"{REPORT_PREFIX}:group-{len(group_names)}"
       group_names[network.role_uri] = group_name
-      group: dict[str, object] = {"name": group_name, "groupURI": network.role_uri}
+      groups.append({"name": group_name, "groupURI": network.role_uri})
       if network.definition:
-        group["properties"] = [
-          {"property": "xbrl:groupDescription", "value": network.definition}
-        ]
-      groups.append(group)
+        # An extended link role's human-readable definition becomes a label on
+        # the group, which is how the specification's own examples name a
+        # group. It was previously written as an invented
+        # `xbrl:groupDescription` property, which no property type defines.
+        group_labels.append(
+          {
+            "forObject": group_name,
+            "labelType": DEFAULT_LABEL_TYPE,
+            "value": network.definition,
+          }
+        )
     group_contents.append({"groupName": group_name, "forObject": name})
 
-  return networks, groups, group_contents
+  return networks, groups, group_contents, group_labels
 
 
 def _relationship(arc: Arc, network: Network) -> dict[str, object]:
