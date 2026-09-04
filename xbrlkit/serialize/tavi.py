@@ -41,6 +41,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from ..model import Arc, Concept, Network, Period, XbrlModel
+from ..namespaces import TAVI_REPORT_BASE
 
 TAVI_VERSION = "PWD-2026-09-01"
 TAVI_BASE = "https://xbrl.org/PWD/2026-09-01"
@@ -59,8 +60,8 @@ RESERVED_NAMESPACES: dict[str, str] = {
 }
 
 # Namespace for the objects this emitter mints (facts, groups, the model
-# object). Report-scoped so two filings never collide.
-REPORT_NS_BASE = "https://robosystems.ai/tavi/report"
+# object). Report-scoped so two filings never collide. See namespaces.py.
+REPORT_NS_BASE = TAVI_REPORT_BASE
 REPORT_PREFIX = "rpt"
 
 # XBRL 2.1 item type -> Tavi datatype QName. Every target here was verified
@@ -323,7 +324,7 @@ def to_tavi_report(
       "namespaces": namespaces,
       "description": (
         f"{model.filing.form or 'filing'} {model.filing.accession} "
-        f"(CIK {model.filing.cik}) projected from XBRL by robosystems-xbrl-holon"
+        f"(CIK {model.filing.cik}) projected from XBRL by xbrlkit"
       ),
     },
     "xbrlModel": {k: v for k, v in xbrl_model.items() if v},

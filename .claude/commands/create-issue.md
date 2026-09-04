@@ -9,7 +9,7 @@ Create a GitHub issue for the current repository based on the user's input.
 
 1. **Work out which layer owns it** - This package converts SEC XBRL filings into `holon.jsonld` documents, and ships both a `holon` CLI (`build`, `fetch`, `query`) and a library. Most bug reports resolve to one of four places — say which:
    - **The filing itself.** SEC XBRL is frequently malformed or unusual. If the source document really says what the output reflects, this is not a bug — it may be a request for tolerance, which is a different and much bigger change.
-   - **Fetching** (`robosystems_xbrl_holon/edgar/`) — retrieval, the SEC User-Agent requirement, rate limits, caching.
+   - **Fetching** (`xbrlkit/edgar/`) — retrieval, the SEC User-Agent requirement, rate limits, caching.
    - **Parsing / modelling** (`parse/`, `model.py`) — the filing was fetched correctly but the translation into the holon model dropped or mangled something.
    - **Query / CLI surface** (`query.py`, `cli.py`, `config.py`) — the model was right but the command or query returns the wrong thing.
 
@@ -19,7 +19,7 @@ Create a GitHub issue for the current repository based on the user's input.
 
 3. **Draft the Issue** - For a conversion bug, include:
    - **The filing**: accession number, CIK, form type, and period. Without these it isn't reproducible — every XBRL bug is filing-specific.
-   - The **exact command** (`holon build …`) and the installed version.
+   - The **exact command** (`xbrlkit build …`) and the installed version.
    - **Actual vs expected** in the output document — name the concept/element and the value.
    - Whether it reproduces with a **freshly fetched** filing versus a cached one.
    - A minimal excerpt of the source XBRL, if you can isolate it. SEC filings are public, so pasting the relevant fragment is fine and makes the issue actionable.

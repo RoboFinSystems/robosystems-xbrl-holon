@@ -153,4 +153,4 @@ jobs:
           echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
           echo "The PyPI package will be automatically published when the release tag is created." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Monitor the publish workflow: [View Workflows](https://github.com/RoboFinSystems/robosystems-xbrl-holon/actions/workflows/publish.yml)" >> $GITHUB_STEP_SUMMARY
+          echo "Monitor the publish workflow: [View Workflows](https://github.com/RoboFinSystems/xbrlkit/actions/workflows/publish.yml)" >> $GITHUB_STEP_SUMMARY

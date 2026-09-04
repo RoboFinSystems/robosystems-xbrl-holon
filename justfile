@@ -52,13 +52,13 @@ format:
 typecheck:
     uv run basedpyright
 
-# Build a holon.jsonld from a SEC filing (defaults into ./output/)
-holon-build cik accno out="":
-    uv run holon build --cik {{cik}} --accno {{accno}} {{ if out == "" { "" } else { "-o " + out } }}
+# Convert a SEC filing (format: holon | tavi | both; defaults into ./output/)
+build cik accno format="holon" out="":
+    uv run xbrlkit build --cik {{cik}} --accno {{accno}} --format {{format}} {{ if out == "" { "" } else { "-o " + out } }}
 
-# Fetch the latest filing for a ticker (into ./output/)
-holon-fetch ticker:
-    uv run holon fetch --ticker {{ticker}}
+# Fetch and convert the latest filing for a ticker (into ./output/)
+fetch ticker format="holon":
+    uv run xbrlkit fetch --ticker {{ticker}} --format {{format}}
 
 # Build python package locally (for testing)
 build-package:
@@ -77,7 +77,7 @@ clean:
     rm -rf .pytest_cache
     rm -rf .ruff_cache
     rm -rf __pycache__
-    rm -rf robosystems_xbrl_holon.egg-info
+    rm -rf xbrlkit.egg-info
     find . -type d -name "__pycache__" -exec rm -rf {} +
     find . -type f -name "*.pyc" -delete
 

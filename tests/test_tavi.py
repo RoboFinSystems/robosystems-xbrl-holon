@@ -12,7 +12,7 @@ import json
 from datetime import date
 from typing import Any
 
-from robosystems_xbrl_holon.model import (
+from xbrlkit.model import (
   Arc,
   Concept,
   DimQualifier,
@@ -25,8 +25,8 @@ from robosystems_xbrl_holon.model import (
   XbrlFact,
   XbrlModel,
 )
-from robosystems_xbrl_holon.serialize import to_tavi, to_tavi_report
-from robosystems_xbrl_holon.serialize.tavi import DOCTYPE_COMPILED, RESERVED_NAMESPACES
+from xbrlkit.serialize import to_tavi, to_tavi_report
+from xbrlkit.serialize.tavi import DOCTYPE_COMPILED, RESERVED_NAMESPACES
 
 US_GAAP = "http://fasb.org/us-gaap/2024-01-31"
 
@@ -387,7 +387,7 @@ def test_every_fact_now_falls_inside_a_cube() -> None:
 
 def test_explicit_out_path_is_honoured_exactly(tmp_path: Any) -> None:
   """`-o` with one format writes that path, as it did before --format existed."""
-  from robosystems_xbrl_holon.cli import _write_outputs
+  from xbrlkit.cli import _write_outputs
 
   target = tmp_path / "custom-name.json"
   _write_outputs(_model(), target, "holon", named=True)
@@ -397,7 +397,7 @@ def test_explicit_out_path_is_honoured_exactly(tmp_path: Any) -> None:
 
 def test_both_formats_derive_a_shared_stem(tmp_path: Any) -> None:
   """Two documents from one parse cannot share a name, so the stem is derived."""
-  from robosystems_xbrl_holon.cli import _write_outputs
+  from xbrlkit.cli import _write_outputs
 
   _write_outputs(_model(), tmp_path / "acme.holon.jsonld", "both", named=True)
   assert (tmp_path / "acme.holon.jsonld").exists()

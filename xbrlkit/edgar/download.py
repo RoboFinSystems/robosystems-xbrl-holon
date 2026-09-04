@@ -20,7 +20,7 @@ from io import BytesIO
 from pathlib import Path
 from zipfile import ZipFile
 
-from robosystems_xbrl_holon.config import CONFIG, Config
+from xbrlkit.config import CONFIG, Config
 
 from .client import EdgarClient
 

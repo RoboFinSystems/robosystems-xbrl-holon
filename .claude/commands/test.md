@@ -38,7 +38,7 @@ just test-all 2>&1 | grep -E "passed|failed|error:|FAILED|warnings summary|^= " 
 
 - **Conversion tests are filing-specific.** A parse fix verified against one filing is barely verified — SEC XBRL varies enormously between filers and years. Add a fixture for the filing that motivated the change.
 - **Network-touching tests are a trap.** Anything hitting EDGAR depends on the SEC User-Agent being configured and on the SEC being reachable and not rate-limiting you. A failure there is usually environmental, not a code bug — check before "fixing" it.
-- `robosystems_xbrl_holon/_vendor/` is vendored third-party code. Don't reformat or refactor it to make a lint pass; exclude it or fix the config.
+- `xbrlkit/_vendor/` is vendored third-party code. Don't reformat or refactor it to make a lint pass; exclude it or fix the config.
 - Never bump `version` in `pyproject.toml` to make anything pass.
 
 ## Goal

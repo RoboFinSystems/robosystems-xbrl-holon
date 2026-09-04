@@ -104,10 +104,10 @@ GOLDEN: dict[tuple[str, str], float] = {
 def aapl_graph(tmp_path_factory: pytest.TempPathFactory):
   if not os.environ.get("SEC_GOV_USER_AGENT"):
     pytest.skip("set SEC_GOV_USER_AGENT (SEC requires an identifying User-Agent)")
-  from robosystems_xbrl_holon.cli import _build_one
-  from robosystems_xbrl_holon.config import CONFIG
-  from robosystems_xbrl_holon.edgar import EdgarClient
-  from robosystems_xbrl_holon.query import load_holon
+  from xbrlkit.cli import _build_one
+  from xbrlkit.config import CONFIG
+  from xbrlkit.edgar import EdgarClient
+  from xbrlkit.query import load_holon
 
   out = tmp_path_factory.mktemp("aapl") / "aapl.holon.jsonld"
   _build_one(EdgarClient(config=CONFIG), CIK, ACCESSION, out, CONFIG.arelle_cache_dir)
@@ -115,7 +115,7 @@ def aapl_graph(tmp_path_factory: pytest.TempPathFactory):
 
 
 def test_income_statement_matches_sec_mcp(aapl_graph) -> None:
-  from robosystems_xbrl_holon.query import fact_grid
+  from xbrlkit.query import fact_grid
 
   qnames = sorted({q for (q, _e) in GOLDEN})
   rows = fact_grid(aapl_graph, elements=qnames, period_type="annual")

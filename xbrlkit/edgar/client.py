@@ -2,9 +2,9 @@
 
 Mirrors the robosystems SEC adapter's client layer (ticker→CIK resolution,
 submissions pagination, XBRL-zip URL construction) but platform-free: it reads
-all settings from :class:`robosystems_xbrl_holon.config.Config`, uses
+all settings from :class:`xbrlkit.config.Config`, uses
 ``requests`` synchronously, and throttles every call through a
-:class:`~robosystems_xbrl_holon.edgar.rate_limit.RateLimiter`.
+:class:`~xbrlkit.edgar.rate_limit.RateLimiter`.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 import requests
 
-from robosystems_xbrl_holon.config import CONFIG, Config
+from xbrlkit.config import CONFIG, Config
 
 from .rate_limit import RateLimiter
 

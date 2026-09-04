@@ -2,7 +2,7 @@
 
 A platform-free mirror of the robosystems SEC adapter client: synchronous
 ``requests``, local-filesystem output, all settings from
-:class:`robosystems_xbrl_holon.config.Config`.
+:class:`xbrlkit.config.Config`.
 """
 
 from __future__ import annotations

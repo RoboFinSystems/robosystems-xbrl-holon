@@ -22,8 +22,11 @@ from pathlib import Path
 
 from rdflib import Dataset, Graph
 
-_CONSOLIDATED_FACTS = """
-PREFIX rs: <https://robosystems.ai/vocab/>
+from .namespaces import HOLON_VOCAB
+
+_CONSOLIDATED_FACTS = (
+  f"PREFIX rs: <{HOLON_VOCAB}>"
+  + """
 PREFIX xbrli: <http://www.xbrl.org/2003/instance#>
 PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
 SELECT ?qname ?name ?value ?end ?ptype ?dtype ?measure WHERE {
@@ -42,6 +45,7 @@ SELECT ?qname ?name ?value ?end ?ptype ?dtype ?measure WHERE {
   FILTER NOT EXISTS { ?f rs:dimension ?dim }
 }
 """
+)
 
 
 @dataclass(frozen=True)

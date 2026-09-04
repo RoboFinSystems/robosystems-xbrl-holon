@@ -11,7 +11,7 @@ Review a pull request by gathering all PR metadata, diff, and review comments, t
 
 The user may provide a PR URL, number, or nothing:
 
-- **URL provided** (e.g., `https://github.com/RoboFinSystems/robosystems-xbrl-holon/pull/12`): Extract the repo and PR number
+- **URL provided** (e.g., `https://github.com/RoboFinSystems/xbrlkit/pull/12`): Extract the repo and PR number
 - **Number provided** (e.g., `12`): Use the current repository
 - **Nothing provided**: Detect from the current branch using `gh pr view --json number,url` — if no open PR exists for the current branch, ask the user which PR to review
 
@@ -59,11 +59,11 @@ With the full PR diff in hand, perform your own review focusing on:
 - **Correctness**: Does the code do what the PR description says?
 - **Patterns**: Does it follow existing codebase patterns (check CLAUDE.md)? Business logic belongs in the operations kernel — logic added directly in a router, GraphQL resolver, or MCP tool handler is a layering mistake, not a style preference.
 - **Security**: Any OWASP top 10 concerns?
-- **Output contract**: does the diff change a value, a key name, or the structure of the emitted `holon.jsonld`? `robosystems-holon-viewer` and `robosystems-report-components` render these documents, so a shape change can break rendering downstream. A renamed CLI command or flag is breaking for anyone scripting `holon build …`.
+- **Output contract**: does the diff change a value, a key name, or the structure of an emitted document? For `holon.jsonld`, `robosystems-holon-viewer` and `robosystems-report-components` render it, so a shape change can break rendering downstream. For the Tavi projection there is no renderer yet, but it targets a published spec — a change there is a conformance claim, not a preference. A renamed CLI command or flag is breaking for anyone scripting `xbrlkit build …`.
 - **Filing variance**: SEC XBRL is inconsistent across filers, years, and taxonomies. Is the change tolerant or presumptive? Code that assumes one dimension per context, or that an element appears once, breaks on the next filer. Does it add a fixture for the filing that motivated it — and is one filing enough evidence?
 - **Silent skips**: does it swallow malformed input? Quietly dropping a fact produces a document that renders fine and is wrong.
 - **SEC etiquette**: the User-Agent is required and belongs in configuration; rate limiting and caching must survive the change, or the tool gets throttled.
-- **Vendored code**: `robosystems_xbrl_holon/_vendor/` should not be edited or reformatted as part of an unrelated change.
+- **Vendored code**: `xbrlkit/_vendor/` should not be edited or reformatted as part of an unrelated change.
 - **Disclosure hygiene** (this repo is public): does the PR *text* over-disclose? Keep security-fix descriptions terse — the area hardened, never the mechanism. Note also that the vulnerable version stays installable from PyPI after the fix merges, so flag whether a patch release is needed rather than assuming the merge is sufficient.
 - **Packaging**: changes to `pyproject.toml` — dependency pins, `requires-python`, included packages, `py.typed` — change what ships and who can install it. `just test-all` never builds a distribution, so packaging faults pass the whole gate and fail at publish time.
 - **Error handling**: Appropriate for the context?

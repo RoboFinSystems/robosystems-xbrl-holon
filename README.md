@@ -1,20 +1,52 @@
-# RoboSystems XBRL Holon
+# xbrlkit
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Convert SEC XBRL filings into `holon.jsonld` documents that render in the
-[RoboSystems Holon Viewer](https://holon.robosystems.ai/).
+Work with XBRL filings above [Arelle](https://arelle.org): fetch a filing, parse
+it **once** into a neutral typed model, and project that model into whichever
+portable representation you need.
+
+```
+EDGAR ──▶ Arelle ──▶ XbrlModel ──┬──▶ holon.jsonld   (RDF / JSON-LD)
+                                 ├──▶ Tavi           (compiled model)
+                                 └──▶ …
+```
+
+Arelle stays the parser — nobody should reimplement DTS resolution. What it does
+not give you is anything ergonomic to *hold*: `ModelXbrl` is a large mutable
+object graph tied to a controller you have to close. `XbrlModel` is the answer to
+that — stateless, single-filing, lossless, and the waist every projection hangs
+off.
+
+**The one architectural rule:** everything goes through `XbrlModel`. A feature
+that reaches into Arelle's `ModelXbrl` directly is bypassing the waist, and that
+is the change that turns a kit into a junk drawer.
+
+## Projections
+
+| Target | Status | Notes |
+| --- | --- | --- |
+| **holon** (`.holon.jsonld`) | shipped | RDF/JSON-LD, renders in the [Holon Viewer](https://holon.robosystems.ai/) |
+| **Tavi** (`.tavi.json`) | shipped | [Project Tavi](https://www.xbrl.org/Specification/tavi/PWD-2026-09-01/tavi-PWD-2026-09-01.html) compiled model, PWD-2026-09-01 |
+| OIM (xBRL-JSON / xBRL-CSV) | planned | Arelle already emits these; a native writer is a fidelity check on `XbrlModel` |
+| property graph / Parquet | planned | see `model.py` |
+
+Tavi is a **public working draft** and its name is explicitly a working title,
+so treat that projection as tracking a moving target. `--format tavi` also
+writes a `.tavi.gaps.json` sidecar recording what the filing carries that the
+model has nowhere to put — that file is the point of the projection, not a
+by-product of it.
 
 ## Install
 
 ### As a package
 
 ```bash
-pip install robosystems-xbrl-holon
+pip install xbrlkit
 ```
 
-Exposes the `holon` CLI (`holon build …`, `holon fetch …`, `holon query …`) and
-the library — use this to consume it from another project. Set your SEC
+Exposes the `xbrlkit` CLI (`xbrlkit build …`, `xbrlkit fetch …`, `xbrlkit query …`)
+and the library — use this to consume it from another project. Set your SEC
 User-Agent via the environment (see [SEC User-Agent](#sec-user-agent)).
 
 ### From source (development)
@@ -48,17 +80,17 @@ SEC_GOV_USER_AGENT="Your Name your@email.com"
 
 ```bash
 # Build a holon.jsonld from a specific filing (-> ./output/)
-holon build --cik 320193 --accno 0000320193-23-000106
+xbrlkit build --cik 320193 --accno 0000320193-23-000106
 
 # Fetch the latest filing for a ticker (-> ./output/)
-holon fetch --ticker NVDA
+xbrlkit fetch --ticker NVDA
 
 # Query consolidated facts in a built holon (in-memory SPARQL)
-holon query --in output/0000320193-23-000106.holon.jsonld --element us-gaap:Assets
+xbrlkit query --in output/0000320193-23-000106.holon.jsonld --element us-gaap:Assets
 ```
 
 From a source checkout, `just` wraps the same CLI as a shorthand:
-`just holon-build 320193 0000320193-23-000106` and `just holon-fetch NVDA`.
+`just build 320193 0000320193-23-000106` and `just fetch NVDA`.
 
 ## View & explore
 

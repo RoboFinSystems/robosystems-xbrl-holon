@@ -1,4 +1,4 @@
-"""Shared pytest fixtures for the robosystems-xbrl-holon test suite."""
+"""Shared pytest fixtures for the xbrlkit test suite."""
 
 from pathlib import Path
 

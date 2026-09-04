@@ -12,7 +12,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from robosystems_xbrl_holon.config import DEFAULT_USER_AGENT, Config
+from xbrlkit.config import DEFAULT_USER_AGENT, Config
 
 
 def test_env_user_agent_overrides_default(monkeypatch):

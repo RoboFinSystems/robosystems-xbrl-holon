@@ -1,7 +1,7 @@
 """Project a neutral ``XbrlModel`` into the canonical ``holon.jsonld``.
 
 The projection builds the flat holon RDF graph **directly** from the whole
-``XbrlModel`` slice (:func:`~robosystems_xbrl_holon.serialize.graph.build_holon_graph`)
+``XbrlModel`` slice (:func:`~xbrlkit.serialize.graph.build_holon_graph`)
 — every fact (numeric and text), concept, network, and dimensional coordinate —
 then hands it to the vendored kernel's :func:`serialize_holon_jsonld_from_graph`,
 which partitions it into the scene / boundary / projection named graphs and

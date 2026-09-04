@@ -1,11 +1,11 @@
 """Command-line interface — a SEC filing to a portable report document.
 
-    holon build --cik 320193 --accno 0000320193-23-000106   # -> output/<accno>.holon.jsonld
-    holon build --cik 320193 --accno … --format tavi        # -> output/<accno>.tavi.json
-    holon fetch --ticker NVDA --form 10-K --n 1             # -> output/
+    xbrlkit build --cik 320193 --accno 0000320193-23-000106  # -> output/<accno>.holon.jsonld
+    xbrlkit build --cik 320193 --accno … --format tavi       # -> output/<accno>.tavi.json
+    xbrlkit fetch --ticker NVDA --form 10-K --n 1            # -> output/
 
 Wires the three layers: ``edgar`` (fetch) -> ``parse`` (Arelle -> XbrlModel) ->
-``serialize`` (XbrlModel -> holon.jsonld and/or a Tavi compiled model).
+``serialize`` (XbrlModel -> a holon or a Tavi compiled model).
 
 ``--format tavi`` writes a second sidecar, ``<accession>.tavi.gaps.json``: what
 the filing carries that Project Tavi has nowhere to put. That file is the point
@@ -178,7 +178,8 @@ def _cmd_fetch(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
   parser = argparse.ArgumentParser(
-    prog="holon", description="Convert a SEC XBRL filing to a holon.jsonld report."
+    prog="xbrlkit",
+    description="Work with XBRL filings above Arelle: one parse, portable models.",
   )
   parser.add_argument(
     "--user-agent",

@@ -35,6 +35,7 @@ from decimal import Decimal
 from rdflib import RDF, XSD, Graph, Literal, URIRef
 
 from ..model import Concept, Network, XbrlModel
+from ..namespaces import FACTSET_BASE, REPORT_BASE
 from ._kernel.jsonld import (
   LINK,
   RS,
@@ -49,7 +50,7 @@ from ._kernel.jsonld import (
   _structure_arrangement,
 )
 
-_FACTSET_BASE = "https://robosystems.ai/factset/"
+_FACTSET_BASE = FACTSET_BASE
 
 
 def _slug(value: str) -> str:
@@ -63,7 +64,7 @@ def _factset_uri(role_uri: str) -> URIRef:
 
 def holon_root(report_id: str) -> URIRef:
   """The report IRI a holon's named graphs (#scene/#boundary/#projection) hang off."""
-  return URIRef(f"https://robosystems.ai/report/{report_id}")
+  return URIRef(f"{REPORT_BASE}{report_id}")
 
 
 _ORDER_PREFIX = re.compile(r"^\s*(\d+)")
