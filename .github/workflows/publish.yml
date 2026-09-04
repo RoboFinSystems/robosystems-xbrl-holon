@@ -9,6 +9,11 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # A PyPI version number is burned permanently — it cannot be deleted and
+    # re-uploaded, and yanking neither frees the number nor un-distributes what
+    # has already been pulled. The production environment's protection rules
+    # (required reviewer, deployment branches) gate that irreversible step.
+    environment: production
 
     permissions:
       contents: read
