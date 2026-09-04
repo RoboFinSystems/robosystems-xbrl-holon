@@ -39,6 +39,15 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel
+from ...namespaces import (
+  CONCEPT_BASE,
+  DATATYPE_BASE,
+  FACTSET_BASE,
+  HOLON_VOCAB,
+  MEASURE_BASE,
+  REPORT_BASE,
+  SNAPSHOT_BASE,
+)
 from rdflib import RDF, XSD, Graph, Literal, Namespace, URIRef
 
 import logging
@@ -57,7 +66,7 @@ _SHAPES_PATH = _REPO_ROOT / "_vendor" / "ontology" / "v1" / "shapes.ttl"
 
 # ── Namespaces ─────────────────────────────────────────────────────────────
 
-RS = Namespace("https://robosystems.ai/vocab/")
+RS = Namespace(HOLON_VOCAB)
 XBRLI = Namespace("http://www.xbrl.org/2003/instance#")
 XLINK = Namespace("http://www.w3.org/1999/xlink#")
 LINK = Namespace("http://www.xbrl.org/2003/linkbase#")
@@ -172,12 +181,12 @@ def _build_context() -> dict[str, Any]:
 
 def _root_uri(bundle: StatementBundle) -> URIRef:
   if bundle.mode == "report" and bundle.report_meta is not None:
-    return URIRef(f"https://robosystems.ai/report/{bundle.report_meta.report_id}")
+    return URIRef(f"{REPORT_BASE}{bundle.report_meta.report_id}")
   if bundle.live_meta is not None:
     return URIRef(
-      f"https://robosystems.ai/snapshot/{bundle.live_meta.snapshot_at.isoformat()}"
+      f"{SNAPSHOT_BASE}{bundle.live_meta.snapshot_at.isoformat()}"
     )
-  return URIRef("https://robosystems.ai/report/anonymous")
+  return URIRef(f"{REPORT_BASE}anonymous")
 
 
 def _scoped(root: URIRef, segment: str, ident: str) -> URIRef:
@@ -186,11 +195,11 @@ def _scoped(root: URIRef, segment: str, ident: str) -> URIRef:
 
 def _concept_uri(qname: str) -> URIRef:
   if ":" not in qname:
-    return URIRef(f"https://robosystems.ai/concept/{qname}")
+    return URIRef(f"{CONCEPT_BASE}{qname}")
   prefix, local = qname.split(":", 1)
   ns = _PREFIX_NS.get(prefix)
   if ns is None:
-    return URIRef(f"https://robosystems.ai/concept/{qname}")
+    return URIRef(f"{CONCEPT_BASE}{qname}")
   return URIRef(str(ns) + local)
 
 
@@ -198,7 +207,7 @@ def _measure_uri(measure: str) -> URIRef:
   if measure.startswith("iso4217:"):
     return URIRef(str(ISO4217) + measure[len("iso4217:") :])
   if ":" not in measure:
-    return URIRef(f"https://robosystems.ai/measure/{measure}")
+    return URIRef(f"{MEASURE_BASE}{measure}")
   return _concept_uri(measure)
 
 
@@ -451,7 +460,7 @@ def _add_facts(g: Graph, bundle: StatementBundle, root: URIRef) -> None:
     g.add((uri, RS.internalId, Literal(fact.id)))
     if fact.fact_set_id:
       g.add(
-        (uri, RS.factSet, URIRef(f"https://robosystems.ai/factset/{fact.fact_set_id}"))
+        (uri, RS.factSet, URIRef(f"{FACTSET_BASE}{fact.fact_set_id}"))
       )
     if fact.structure_id:
       g.add((uri, RS.structure, _scoped(root, "structure", fact.structure_id)))
@@ -481,7 +490,7 @@ def _add_information_blocks(g: Graph, bundle: StatementBundle, root: URIRef) -> 
         (
           ib_uri,
           RS.factSet,
-          URIRef(f"https://robosystems.ai/factset/{body['fact_set']['id']}"),
+          URIRef(f"{FACTSET_BASE}{body['fact_set']['id']}"),
         )
       )
     g.add(
@@ -491,7 +500,7 @@ def _add_information_blocks(g: Graph, bundle: StatementBundle, root: URIRef) -> 
         Literal(
           json.dumps(body, default=_json_default, sort_keys=True),
           datatype=URIRef(
-            "https://robosystems.ai/datatype/v1/InformationBlockEnvelopeJSON"
+            f"{DATATYPE_BASE}InformationBlockEnvelopeJSON"
           ),
         ),
       )

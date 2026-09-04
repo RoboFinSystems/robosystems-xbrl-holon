@@ -4,14 +4,14 @@ description: Review the staged diff against this converter's output contract and
 
 Review all staged changes (`git diff --cached`) with focus on the contexts below. Read the diff first — if nothing is staged, say so rather than reviewing the working tree.
 
-This is `robosystems-xbrl-holon`: a **published Python package** converting SEC XBRL filings into `holon.jsonld`, exposing the `holon` CLI and a library. **Public repository.** Everything runs through `uv run`.
+This is `xbrlkit`: a **published Python package** converting SEC XBRL filings into `holon.jsonld`, exposing the `holon` CLI and a library. **Public repository.** Everything runs through `uv run`.
 
 ## Output contract (decides the verdict)
 
 The emitted `holon.jsonld` is consumed downstream by `robosystems-holon-viewer` and `robosystems-report-components`:
 
 - Does the diff change a **value**, a **key name**, or the **document structure**? Say for which filings and why — a consumer's rendering can depend on the old shape.
-- A CLI change (renamed command or flag) is breaking for anyone scripting `holon build …`.
+- A CLI change (renamed command or flag) is breaking for anyone scripting `xbrlkit build …`.
 - Broader coverage — filings that previously failed now convert — is additive, but name the class of filing so it can be spot-checked.
 
 ## Filing variance (the thing that makes this repo hard)
@@ -25,7 +25,7 @@ SEC XBRL is inconsistent across filers, years, and taxonomies. So:
 ## Layering
 
 - `edgar/` fetches; `parse/` + `model.py` convert; `query.py` / `cli.py` expose. A fetch concern leaking into parsing (or vice versa) is worth flagging.
-- `robosystems_xbrl_holon/_vendor/` is vendored third-party code — it should not be edited, reformatted, or refactored as part of an unrelated change.
+- `xbrlkit/_vendor/` is vendored third-party code — it should not be edited, reformatted, or refactored as part of an unrelated change.
 
 ## Network and SEC etiquette
 

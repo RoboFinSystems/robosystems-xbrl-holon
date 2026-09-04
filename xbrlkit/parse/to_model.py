@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 from arelle import XbrlConst
 
-from robosystems_xbrl_holon.model import (
+from xbrlkit.model import (
   Arc,
   Concept,
   DimQualifier,
@@ -35,7 +35,7 @@ from robosystems_xbrl_holon.model import (
   XbrlFact,
   XbrlModel,
 )
-from robosystems_xbrl_holon.parse.ids import fact_id, period_id, unit_id
+from xbrlkit.parse.ids import fact_id, period_id, unit_id
 
 if TYPE_CHECKING:
   from arelle.ModelXbrl import ModelXbrl

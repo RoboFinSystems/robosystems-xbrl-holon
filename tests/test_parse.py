@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from robosystems_xbrl_holon.parse import ids
-from robosystems_xbrl_holon.parse.to_model import (
+from xbrlkit.parse import ids
+from xbrlkit.parse.to_model import (
   _make_period,
   _make_unit,
   _measure_token,
@@ -21,7 +21,7 @@ from robosystems_xbrl_holon.parse.to_model import (
 
 def test_parse_package_imports():
   """The public surface imports without touching the network."""
-  from robosystems_xbrl_holon.parse import (
+  from xbrlkit.parse import (
     close,
     load_model,
     to_xbrl_model,
@@ -206,7 +206,7 @@ def test_normalize_cik_passes_non_numeric():
 
 
 def test_calendar_enrichment():
-  from robosystems_xbrl_holon.parse.to_model import (
+  from xbrlkit.parse.to_model import (
     _duration_calendar,
     _instant_calendar,
   )
@@ -236,7 +236,7 @@ def test_sec_ixt_transforms_register():
   # word-numbers) parse to (ixTransformValueError). No network, no model load.
   from arelle import FunctionIxt
 
-  from robosystems_xbrl_holon.parse.arelle_load import (
+  from xbrlkit.parse.arelle_load import (
     SEC_IXT_NAMESPACE,
     _register_sec_transforms,
   )

@@ -1,7 +1,7 @@
 """Synchronous, sleep-based rate limiter for SEC EDGAR requests.
 
 SEC fair-access allows ~10 req/s; 5 req/s is the safer default (see
-:mod:`robosystems_xbrl_holon.config`). This limiter simply spaces successive
+:mod:`xbrlkit.config`). This limiter simply spaces successive
 requests by ``1 / per_sec`` seconds — proactive spacing, not reactive backoff.
 """
 

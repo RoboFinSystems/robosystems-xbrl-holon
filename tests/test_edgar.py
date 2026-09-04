@@ -10,8 +10,8 @@ from typing import Any
 
 import pytest
 
-from robosystems_xbrl_holon.edgar import EdgarClient, download_filing
-from robosystems_xbrl_holon.edgar.download import _xbrl_zip_url
+from xbrlkit.edgar import EdgarClient, download_filing
+from xbrlkit.edgar.download import _xbrl_zip_url
 
 
 class FakeResponse:
@@ -75,7 +75,7 @@ def test_download_filing_404_raises(
   monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
   client = EdgarClient()
-  from robosystems_xbrl_holon.edgar.client import FilingRef
+  from xbrlkit.edgar.client import FilingRef
 
   monkeypatch.setattr(
     client,

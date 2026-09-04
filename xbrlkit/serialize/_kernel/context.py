@@ -15,8 +15,12 @@ Predicate design:
 
 from __future__ import annotations
 
-# Base IRI for RoboSystems-owned predicates
-RS_VOCAB = "https://robosystems.ai/vocab/"
+from ...namespaces import HOLON_VOCAB
+
+# Base IRI for the holon's own predicates. See namespaces.py: this is the one
+# namespace here that would change if the holon standardises; the taxonomy
+# prefixes below are ours permanently and must not move with it.
+RS_VOCAB = HOLON_VOCAB
 
 # Canonical @context as a Python dict. Serialized directly to JSON-LD.
 CANONICAL_CONTEXT: dict = {

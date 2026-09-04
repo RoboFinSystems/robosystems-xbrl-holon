@@ -42,7 +42,9 @@ jobs:
         id: check-pypi
         run: |
           VERSION="${{ steps.current-version.outputs.current_version }}"
-          PACKAGE_NAME="robosystems-xbrl-holon"
+          # Read the name from pyproject like the version above, so a rename
+          # cannot leave this check pointing at the wrong PyPI project.
+          PACKAGE_NAME=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['name'])")
 
           # Check if version exists on PyPI
           if curl -s "https://pypi.org/pypi/${PACKAGE_NAME}/${VERSION}/json" | grep -q "\"version\""; then

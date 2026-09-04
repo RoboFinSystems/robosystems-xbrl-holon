@@ -12,7 +12,7 @@ import json
 from datetime import date
 from typing import Any
 
-from robosystems_xbrl_holon.model import (
+from xbrlkit.model import (
   Arc,
   Concept,
   DimQualifier,
@@ -27,12 +27,12 @@ from robosystems_xbrl_holon.model import (
 )
 from rdflib import RDF
 
-from robosystems_xbrl_holon.serialize import (
+from xbrlkit.serialize import (
   build_holon_graph,
   classify_network,
   to_holon,
 )
-from robosystems_xbrl_holon.serialize._kernel.jsonld import RS, shacl_report
+from xbrlkit.serialize._kernel.jsonld import RS, shacl_report
 
 
 def _model() -> XbrlModel:

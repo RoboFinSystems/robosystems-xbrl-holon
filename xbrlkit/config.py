@@ -15,16 +15,14 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-DEFAULT_USER_AGENT = (
-  "robosystems-xbrl-holon (set SEC_GOV_USER_AGENT='Name email@example.com')"
-)
+DEFAULT_USER_AGENT = "xbrlkit (set SEC_GOV_USER_AGENT='Name email@example.com')"
 
 
 def _default_cache_dir() -> Path:
   override = os.environ.get("XBRL_HOLON_CACHE_DIR")
   if override:
     return Path(override)
-  return Path.home() / ".cache" / "robosystems-xbrl-holon"
+  return Path.home() / ".cache" / "xbrlkit"
 
 
 @dataclass(frozen=True)

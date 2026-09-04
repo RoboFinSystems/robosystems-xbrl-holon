@@ -4,19 +4,20 @@
 
 ## Changes
 
-<!-- Grouped by layer: edgar/ (fetch), parse/ + model.py (convert), query.py / cli.py (surface).
-     Note that _vendor/ is vendored third-party code and should not be edited here. -->
+<!-- Grouped by layer: edgar/ (fetch), parse/ + model.py (convert), serialize/ (project),
+     query.py / cli.py (surface). Note that _vendor/ is vendored third-party code and should
+     not be edited here. -->
 
 -
 
 ## Output Impact
 
 <!-- Required judgment. The emitted holon.jsonld is consumed by robosystems-holon-viewer and
-     robosystems-report-components.
+     robosystems-report-components; the Tavi projection targets a published spec.
      - CHANGED OUTPUT: a different value, a renamed key, a restructured document. Say which
        filings are affected — a consumer's rendering may depend on the old shape.
      - BROADER COVERAGE: filings that previously failed now convert. Name the class of filing.
-     - CLI CONTRACT: a renamed command or flag, breaking for anyone scripting `holon build ...`.
+     - CLI CONTRACT: a renamed command or flag, breaking for anyone scripting `xbrlkit build ...`.
      - INTERNAL: refactors and tests leaving output identical. -->
 
 INTERNAL

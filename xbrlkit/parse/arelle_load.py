@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 
 from arelle import Cntlr, PluginManager
 
-from robosystems_xbrl_holon.config import CONFIG
+from xbrlkit.config import CONFIG
 
 if TYPE_CHECKING:
   from arelle.ModelXbrl import ModelXbrl

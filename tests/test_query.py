@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from robosystems_xbrl_holon.model import (
+from xbrlkit.model import (
   Concept,
   DimQualifier,
   EntityIdentity,
@@ -22,8 +22,8 @@ from robosystems_xbrl_holon.model import (
   XbrlFact,
   XbrlModel,
 )
-from robosystems_xbrl_holon.query import fact_grid, parse_holon
-from robosystems_xbrl_holon.serialize import to_holon
+from xbrlkit.query import fact_grid, parse_holon
+from xbrlkit.serialize import to_holon
 
 
 def _model() -> XbrlModel:

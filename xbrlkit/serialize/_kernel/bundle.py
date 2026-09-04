@@ -28,6 +28,8 @@ extensions when projecting to XML, and produces a valid XBRL instance
 
 from __future__ import annotations
 
+from ...namespaces import ENTITY_SCHEME
+
 from datetime import date, datetime
 from typing import Any, Literal
 
@@ -224,7 +226,7 @@ class BundleContext(BaseModel):
 
   id: str
   entity_identifier: str
-  entity_scheme: str = "http://robosystems.ai/entity"
+  entity_scheme: str = ENTITY_SCHEME
   period_start: date | None = None
   period_end: date
   period_type: Literal["duration", "instant"]
