@@ -125,7 +125,36 @@ def _model() -> XbrlModel:
       decimals="INF",
     ),
   ]
+  dim = "http://xbrl.org/int/dim/arcrole"
   networks = [
+    Network(
+      role_uri="http://example.com/role/Segments",
+      definition="Segments",
+      kind="definition",
+      arcs=[
+        Arc(
+          from_qname="us-gaap:CashAbstract",
+          to_qname="us-gaap:SegmentTable",
+          arcrole=f"{dim}/all",
+          is_root=True,
+        ),
+        Arc(
+          from_qname="us-gaap:SegmentTable",
+          to_qname="us-gaap:SegmentAxis",
+          arcrole=f"{dim}/hypercube-dimension",
+        ),
+        Arc(
+          from_qname="us-gaap:SegmentAxis",
+          to_qname="us-gaap:SegmentDomain",
+          arcrole=f"{dim}/dimension-domain",
+        ),
+        Arc(
+          from_qname="us-gaap:SegmentDomain",
+          to_qname="us-gaap:NorthAmerica",
+          arcrole=f"{dim}/domain-member",
+        ),
+      ],
+    ),
     Network(
       role_uri="http://example.com/role/BalanceSheet",
       definition="Balance Sheet",
@@ -283,13 +312,6 @@ def test_gap_report_records_dropped_period_semantics() -> None:
   assert annual["period"] == "2024-01-01/2024-12-31"
 
 
-def test_gap_report_counts_facts_with_no_cube() -> None:
-  """Dimensional facts keep their coordinates but no cube declares their space yet."""
-  _, gaps = to_tavi_report(_model())
-  assert gaps.dimensional_facts == 1
-  assert gaps.facts_without_cube == 1
-
-
 def test_label_roles_map_to_the_core_model_label_types() -> None:
   """The standard role is xbrl:label, and the negated family exists in Tavi."""
   labels = _document()["xbrlModel"]["labels"]
@@ -314,3 +336,50 @@ def test_serialization_is_deterministic_and_valid_json() -> None:
   second = to_tavi(_model())
   assert first == second
   assert json.loads(first)["documentInfo"]["documentType"] == DOCTYPE_COMPILED
+
+
+def test_hypercube_becomes_a_cube_with_its_axis() -> None:
+  """The `all` and `hypercube-dimension` arcs rebuild into a cubeObject."""
+  model = _document()["xbrlModel"]
+  cube = next(c for c in model["cubes"] if c["name"] == "rpt:cube-0")
+  by_dimension = {d["dimension"]: d for d in cube["cubeDimensions"]}
+  # Section 5.10.2: the concept dimension must be present, and is left open.
+  assert by_dimension["xbrl:concept"] == {"dimension": "xbrl:concept"}
+  # Core dimensions are optional so facts that omit one still fall inside.
+  assert by_dimension["xbrl:period"]["optional"] is True
+  assert by_dimension["us-gaap:SegmentAxis"]["domainNetwork"] == "rpt:domain-0"
+
+
+def test_axis_domain_and_member_leave_the_concept_list() -> None:
+  """In Tavi they are dimension, domain class and member objects, not concepts."""
+  model = _document()["xbrlModel"]
+  names = {c["name"] for c in model["concepts"]} | {
+    h["name"] for h in model["headings"]
+  }
+  assert "us-gaap:SegmentAxis" not in names
+  assert "us-gaap:SegmentDomain" not in names
+  assert "us-gaap:NorthAmerica" not in names
+  assert {"name": "us-gaap:SegmentAxis", "domainClass": "us-gaap:SegmentDomain"} in (
+    model["dimensions"]
+  )
+  assert {"name": "us-gaap:SegmentDomain"} in model["domainClasses"]
+  assert {
+    "name": "us-gaap:NorthAmerica",
+    "domainClasses": ["us-gaap:SegmentDomain"],
+  } in model["members"]
+
+
+def test_domain_network_is_rooted_at_the_domain_class() -> None:
+  """Section 5.10.1: the domain's root must match the dimension's domainClass."""
+  network = _document()["xbrlModel"]["domainNetworks"][0]
+  assert network["root"] == "us-gaap:SegmentDomain"
+  assert network["relationships"] == [
+    {"source": "us-gaap:SegmentDomain", "target": "us-gaap:NorthAmerica"}
+  ]
+
+
+def test_every_fact_now_falls_inside_a_cube() -> None:
+  """Section 8.5.2.5 — the open cube catches the undimensioned facts."""
+  _, gaps = to_tavi_report(_model())
+  assert gaps.dimensional_facts == 1
+  assert gaps.facts_without_cube == 0

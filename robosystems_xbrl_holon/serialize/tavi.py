@@ -15,19 +15,18 @@ We emit a **compiled model** (``documentType`` ``…/compiled``): fully resolved
 no imports, self-contained — one file per filing, so a consumer needs nothing
 else to read it.
 
-Two deliberate non-goals, both recorded rather than hidden:
+The one genuine transformation is dimensionality. XBRL says it with arcroles
+over ``<xs:element>``s — a hypercube is an element, an axis is an element, a
+domain and its members are elements — while Tavi gives each its own object
+type. :func:`_dimensional` reads the definition networks back into cube,
+dimension, domain class, domain network and member objects, which is also why
+those elements must then be kept *out* of ``concepts``: in Tavi they are no
+longer concepts, and emitting them twice would collide on the name.
 
-- **Cubes.** Tavi's ``cubeObject`` is first-class with ``cubeDimensions``; ours
-  are definition-network arcroles. The raw material is present (``Arc.arcrole``
-  keeps ``all`` / ``hypercube-dimension`` / ``dimension-domain`` /
-  ``domain-member`` / ``dimension-default``), so this is derivable — it is just
-  a genuine transformation and lands in a second pass. Until then dimensional
-  facts are emitted with their ``factDimensions`` intact but no cube declares
-  their space, which a validator will flag as ``oimte:noFactSpaceForFact``.
-- **Whatever Tavi has nowhere to put.** :func:`to_tavi_report` returns a
-  :class:`GapReport` alongside the document. It is not a debug aid: the set of
-  things a real filing carries that the model cannot express is the substantive
-  output of this exercise.
+**Whatever Tavi has nowhere to put** is not hidden: :func:`to_tavi_report`
+returns a :class:`GapReport` alongside the document, split into what the model
+cannot express and what this emitter has not mapped yet, so neither is blamed
+for the other. That report is the substantive output of the exercise.
 
 Written against the prose of PWD-2026-09-01. The draft references a
 ``tavi-schema.json`` that is not published, so nothing here is validated
@@ -294,7 +293,8 @@ def to_tavi_report(
   gaps = GapReport()
   namespaces = _namespaces(model, report_id)
 
-  concepts, headings = _concepts_and_headings(model, gaps)
+  dimensional = _dimensional(model)
+  concepts, headings = _concepts_and_headings(model, gaps, dimensional)
   networks, groups, group_contents = _networks_and_groups(model, report_id)
 
   xbrl_model: dict[str, object] = {
@@ -305,11 +305,16 @@ def to_tavi_report(
     "units": _units(model),
     "concepts": concepts,
     "headings": headings,
-    "labels": _labels(model, gaps),
+    "dimensions": dimensional.dimensions,
+    "domainClasses": dimensional.domain_classes,
+    "domainNetworks": dimensional.domain_networks,
+    "members": dimensional.members,
+    "cubes": dimensional.cubes,
+    "labels": _labels(model, gaps, dimensional),
     "networks": networks,
     "groups": groups,
     "groupContents": group_contents,
-    "facts": _facts(model, gaps),
+    "facts": _facts(model, gaps, dimensional),
   }
 
   document: dict[str, object] = {
@@ -326,8 +331,200 @@ def to_tavi_report(
   return document, gaps
 
 
+@dataclass
+class Dimensional:
+  """The cube half of the model, rebuilt from the definition networks.
+
+  XBRL expresses dimensionality as arcroles over ``<xs:element>``s: a hypercube
+  is an element, an axis is an element, a domain and its members are elements.
+  Tavi makes each a distinct object type, so this pass reads the arcroles and
+  hands back the objects — plus ``claimed``, the element qnames that are now
+  dimensional objects and must not also be emitted as concepts.
+  """
+
+  cubes: list[dict[str, object]] = field(default_factory=list)
+  dimensions: list[dict[str, object]] = field(default_factory=list)
+  domain_classes: list[dict[str, object]] = field(default_factory=list)
+  domain_networks: list[dict[str, object]] = field(default_factory=list)
+  members: list[dict[str, object]] = field(default_factory=list)
+  claimed: set[str] = field(default_factory=set)
+  # (all axes, required axes) per positive cube, for the section 8.5.2.5 check.
+  cube_spaces: list[tuple[frozenset[str], frozenset[str]]] = field(default_factory=list)
+
+  def covers(self, signature: frozenset[str]) -> bool:
+    """Whether some positive cube admits a fact carrying exactly ``signature``.
+
+    A fact falls inside a cube when it uses no axis the cube lacks and supplies
+    every axis the cube requires. Optional axes are the ones a fact may omit —
+    see :func:`_cube_dimensions` for why a defaulted axis is optional.
+    """
+    return any(
+      signature <= every and required <= signature
+      for every, required in self.cube_spaces
+    )
+
+
+# XBRL Dimensions 1.0 arcroles. These are what ``Arc.arcrole`` preserves on a
+# definition network, and they are the whole input to the cube reconstruction.
+DIM_ALL = "http://xbrl.org/int/dim/arcrole/all"
+DIM_NOT_ALL = "http://xbrl.org/int/dim/arcrole/notAll"
+DIM_HYPERCUBE_DIMENSION = "http://xbrl.org/int/dim/arcrole/hypercube-dimension"
+DIM_DIMENSION_DOMAIN = "http://xbrl.org/int/dim/arcrole/dimension-domain"
+DIM_DOMAIN_MEMBER = "http://xbrl.org/int/dim/arcrole/domain-member"
+DIM_DIMENSION_DEFAULT = "http://xbrl.org/int/dim/arcrole/dimension-default"
+
+# Core dimensions are declared optional on every reconstructed cube: an XBRL
+# hypercube constrains taxonomy dimensions only, and section 5.10.1's `optional`
+# is what lets facts that omit a core dimension still fall inside the cube.
+OPTIONAL_CORE_DIMENSIONS = ("xbrl:period", "xbrl:entity", "xbrl:unit")
+
+
 def _report_namespace(report_id: str) -> str:
   return f"{REPORT_NS_BASE}/{report_id}"
+
+
+def _dimensional(model: XbrlModel) -> Dimensional:
+  """Rebuild cubes, dimensions, domains and members from definition networks."""
+  out = Dimensional()
+  by_arcrole: dict[str, list[Arc]] = {}
+  for network in model.networks:
+    if network.kind != "definition":
+      continue
+    for arc in network.arcs:
+      by_arcrole.setdefault(arc.arcrole or "", []).append(arc)
+
+  # axis -> the domain element it points at (dimension-domain).
+  axis_domains: dict[str, str] = {
+    arc.from_qname: arc.to_qname for arc in by_arcrole.get(DIM_DIMENSION_DOMAIN, [])
+  }
+  # domain-member arcs, grouped by their source, form each domain's member tree.
+  members_by_parent: dict[str, list[Arc]] = {}
+  for arc in by_arcrole.get(DIM_DOMAIN_MEMBER, []):
+    members_by_parent.setdefault(arc.from_qname, []).append(arc)
+  # An axis with a default member is one a fact may omit: XBRL fills the gap
+  # with the default, which is exactly what Tavi's `optional` cube dimension
+  # means (section 5.10.1). The two constructs line up one-to-one.
+  defaulted_axes: frozenset[str] = frozenset(
+    arc.from_qname for arc in by_arcrole.get(DIM_DIMENSION_DEFAULT, [])
+  )
+  # hypercube -> its axes.
+  axes_by_hypercube: dict[str, list[str]] = {}
+  for arc in by_arcrole.get(DIM_HYPERCUBE_DIMENSION, []):
+    axes_by_hypercube.setdefault(arc.from_qname, []).append(arc.to_qname)
+
+  member_domain_classes: dict[str, set[str]] = {}
+  domain_network_names: dict[str, str] = {}
+
+  for axis in sorted(axes_by_hypercube_axes(axes_by_hypercube)):
+    domain = axis_domains.get(axis)
+    out.claimed.add(axis)
+    dimension: dict[str, object] = {"name": axis}
+    if domain is None:
+      # A typed dimension has no domain element; its values conform to a
+      # datatype instead (section 5.7).
+      out.dimensions.append(dimension)
+      continue
+
+    out.claimed.add(domain)
+    dimension["domainClass"] = domain
+    out.dimensions.append(dimension)
+    out.domain_classes.append({"name": domain})
+
+    relationships: list[dict[str, object]] = []
+    for source, target in _walk_domain(domain, members_by_parent):
+      out.claimed.add(target)
+      member_domain_classes.setdefault(target, set()).add(domain)
+      relationships.append({"source": source, "target": target})
+    network_name = f"{REPORT_PREFIX}:domain-{len(domain_network_names)}"
+    domain_network_names[axis] = network_name
+    out.domain_networks.append(
+      {"name": network_name, "root": domain, "relationships": relationships}
+    )
+
+  for member in sorted(member_domain_classes):
+    out.members.append(
+      {"name": member, "domainClasses": sorted(member_domain_classes[member])}
+    )
+
+  excluded: dict[str, list[str]] = {}
+  cube_names: dict[str, str] = {}
+  for arc in by_arcrole.get(DIM_NOT_ALL, []):
+    excluded.setdefault(arc.to_qname, []).append(arc.from_qname)
+
+  for hypercube in sorted({arc.to_qname for arc in by_arcrole.get(DIM_ALL, [])}):
+    out.claimed.add(hypercube)
+    axes = sorted(set(axes_by_hypercube.get(hypercube, ())))
+    cube_name = f"{REPORT_PREFIX}:cube-{len(cube_names)}"
+    cube_names[hypercube] = cube_name
+    out.cubes.append(
+      {
+        "name": cube_name,
+        "cubeDimensions": _cube_dimensions(axes, domain_network_names, defaulted_axes),
+      }
+    )
+    out.cube_spaces.append((frozenset(axes), frozenset(axes) - defaulted_axes))
+
+  # Section 8.5.2.5 requires every fact to fall inside some positive cube, and
+  # undimensioned facts fall inside none of the hypercubes above. An open cube
+  # (section 14.5.3 — a cube with no cubeType) is the model's own idiom for
+  # "any concept, no taxonomy dimensions".
+  out.cubes.append(
+    {
+      "name": f"{REPORT_PREFIX}:cube-undimensioned",
+      "cubeDimensions": _cube_dimensions([], domain_network_names, defaulted_axes),
+    }
+  )
+  out.cube_spaces.append((frozenset(), frozenset()))
+  return out
+
+
+def axes_by_hypercube_axes(axes_by_hypercube: dict[str, list[str]]) -> set[str]:
+  """Every axis referenced by any hypercube."""
+  return {axis for axes in axes_by_hypercube.values() for axis in axes}
+
+
+def _cube_dimensions(
+  axes: list[str],
+  domain_network_names: dict[str, str],
+  defaulted_axes: frozenset[str],
+) -> list[dict[str, object]]:
+  """Cube dimensions: the concept dimension, the core three, then the axes.
+
+  The concept dimension is left open (no ``domainNetwork``), which section
+  14.5.3 defines as admitting every concept. Reconstructing a concept domain
+  per hypercube from the primary-item side of the ``all`` arcs would narrow the
+  cube without adding information a consumer of one filing can use.
+  """
+  dimensions: list[dict[str, object]] = [{"dimension": "xbrl:concept"}]
+  dimensions.extend(
+    {"dimension": core, "optional": True} for core in OPTIONAL_CORE_DIMENSIONS
+  )
+  for axis in axes:
+    entry: dict[str, object] = {"dimension": axis}
+    network = domain_network_names.get(axis)
+    if network:
+      entry["domainNetwork"] = network
+    if axis in defaulted_axes:
+      entry["optional"] = True
+    dimensions.append(entry)
+  return dimensions
+
+
+def _walk_domain(
+  root: str, members_by_parent: dict[str, list[Arc]]
+) -> list[tuple[str, str]]:
+  """Flatten a domain-member tree into source/target pairs, cycle-safe."""
+  pairs: list[tuple[str, str]] = []
+  seen: set[str] = {root}
+  queue = [root]
+  while queue:
+    parent = queue.pop(0)
+    for arc in members_by_parent.get(parent, ()):
+      pairs.append((parent, arc.to_qname))
+      if arc.to_qname not in seen:
+        seen.add(arc.to_qname)
+        queue.append(arc.to_qname)
+  return pairs
 
 
 def _namespaces(model: XbrlModel, report_id: str) -> dict[str, str]:
@@ -396,17 +593,25 @@ def _unit_qname(measure: str) -> str:
 
 
 def _concepts_and_headings(
-  model: XbrlModel, gaps: GapReport
+  model: XbrlModel, gaps: GapReport, dimensional: Dimensional
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
   """Split concepts into concept objects and heading objects.
 
   Section 5.3: a heading is an object with no reportable value that is still a
   component of the concept dimension — exactly an abstract XBRL element.
+
+  Elements the dimensional pass claimed (axes, domains, members, hypercubes)
+  are excluded: in Tavi they are dimension, domain class, member and cube
+  objects, and emitting them here as well would collide on the name
+  (``oimte:duplicateObjects``). In XBRL they are all ``<xs:element>``, which is
+  precisely the flattening Tavi undoes.
   """
   concepts: list[dict[str, object]] = []
   headings: list[dict[str, object]] = []
 
   for qname in sorted(model.concepts):
+    if qname in dimensional.claimed:
+      continue
     concept = model.concepts[qname]
     if concept.is_abstract:
       headings.append({"name": qname})
@@ -451,8 +656,16 @@ def _concept_properties(concept: Concept) -> list[dict[str, object]]:
   return properties
 
 
-def _labels(model: XbrlModel, gaps: GapReport) -> list[dict[str, object]]:
-  """Label objects (section 5.14): free-standing, pointing at ``forObject``."""
+def _labels(
+  model: XbrlModel, gaps: GapReport, dimensional: Dimensional
+) -> list[dict[str, object]]:
+  """Label objects (section 5.14): free-standing, pointing at ``forObject``.
+
+  ``forObject`` is "any", so a label on an axis, domain or member is emitted
+  unchanged — those objects still exist in the model, just under a different
+  object type than they had in XBRL.
+  """
+  _ = dimensional
   labels: list[dict[str, object]] = []
   for qname in sorted(model.concepts):
     for label in model.concepts[qname].labels:
@@ -539,7 +752,9 @@ def _relationship(arc: Arc, network: Network) -> dict[str, object]:
   return entry
 
 
-def _facts(model: XbrlModel, gaps: GapReport) -> list[dict[str, object]]:
+def _facts(
+  model: XbrlModel, gaps: GapReport, dimensional: Dimensional
+) -> list[dict[str, object]]:
   """Fact objects (section 8.3) — the near-identity mapping.
 
   ``factDimensions`` is a flat name/value map over concept/period/unit/entity
@@ -566,8 +781,10 @@ def _facts(model: XbrlModel, gaps: GapReport) -> list[dict[str, object]]:
       if value is not None:
         dimensions[qualifier.axis_qname] = value
 
+    signature = frozenset(qualifier.axis_qname for qualifier in fact.dims)
     if fact.dims:
       gaps.dimensional_facts += 1
+    if not dimensional.covers(signature):
       gaps.facts_without_cube += 1
 
     value = fact.value_str if fact.value_kind == "text" else fact.numeric_value
