@@ -285,8 +285,32 @@ def test_extended_link_role_becomes_one_group() -> None:
   """Both networks share an ELR, so they share a group (section 10.1)."""
   model = _document()["xbrlModel"]
   assert len(model["groups"]) == 1
-  assert model["groups"][0]["groupURI"] == "http://example.com/role/BalanceSheet"
+  group = model["groups"][0]
+  assert group["groupURI"] == "http://example.com/role/BalanceSheet"
   assert len(model["groupContents"]) == 2
+  # A group carries only name and groupURI; its readable name is a label.
+  assert set(group) == {"name", "groupURI"}
+
+
+def test_group_definition_is_a_label_not_an_invented_property() -> None:
+  """The ELR definition is a labelObject, as the specification's examples show.
+
+  It was previously written as an `xbrl:groupDescription` property, which no
+  property type in the model defines and which a validator would reject.
+  """
+  model = _document()["xbrlModel"]
+  group_name = model["groups"][0]["name"]
+  label = next(entry for entry in model["labels"] if entry["forObject"] == group_name)
+  assert label == {
+    "forObject": group_name,
+    "labelType": "xbrl:label",
+    "value": "Balance Sheet",
+  }
+  assert not any(
+    p.get("property") == "xbrl:groupDescription"
+    for obj in model["groups"]
+    for p in obj.get("properties", [])
+  )
 
 
 def test_gap_report_records_the_unmapped_shares_datatype() -> None:
