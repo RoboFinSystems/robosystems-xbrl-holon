@@ -46,20 +46,22 @@ def _parse_date(value: str | None) -> date | None:
     return None
 
 
-def _write_outputs(model: XbrlModel, out_path: Path, fmt: str) -> None:
-  """Write the requested projection(s) of ``model`` beside ``out_path``.
+def _write_outputs(model: XbrlModel, out_path: Path, fmt: str, named: bool) -> None:
+  """Write the requested projection(s) of ``model``.
 
-  ``out_path`` fixes the directory and the stem; each format supplies its own
-  suffix, so ``--format both`` writes two documents from the one parse.
+  A single format with an explicit ``-o`` writes exactly that path, unchanged
+  from before ``--format`` existed. Only ``--format both`` has to derive a stem,
+  because one parse then produces two documents and they cannot share a name.
   """
   out_path.parent.mkdir(parents=True, exist_ok=True)
   stem = out_path.name
   for suffix in SUFFIXES.values():
     stem = stem.removesuffix(suffix)
+  exact = out_path if named and fmt != "both" else None
 
   wanted = ("holon", "tavi") if fmt == "both" else (fmt,)
   for name in wanted:
-    target = out_path.parent / f"{stem}{SUFFIXES[name]}"
+    target = exact or out_path.parent / f"{stem}{SUFFIXES[name]}"
     if name == "holon":
       target.write_text(to_holon(model))
       print(f"wrote {target}")
@@ -82,6 +84,7 @@ def _build_one(
   out_path: Path,
   cache_dir: Path,
   fmt: str = "holon",
+  named: bool = False,
 ) -> XbrlModel:
   """Fetch one filing, parse it, and write the requested projection(s)."""
   ref = client.get_filing_ref(cik, accession)
@@ -105,7 +108,7 @@ def _build_one(
       )
     finally:
       close(mx.modelManager.cntlr)
-  _write_outputs(model, out_path, fmt)
+  _write_outputs(model, out_path, fmt, named)
   print(f"  ({len(model.facts)} facts, {len(model.networks)} networks)")
   return model
 
@@ -123,7 +126,15 @@ def _cmd_build(args: argparse.Namespace) -> int:
   config = _config_from_args(args)
   client = EdgarClient(config=config)
   out = Path(args.out) if args.out else DEFAULT_OUTPUT_DIR / args.accno
-  _build_one(client, args.cik, args.accno, out, config.arelle_cache_dir, args.format)
+  _build_one(
+    client,
+    args.cik,
+    args.accno,
+    out,
+    config.arelle_cache_dir,
+    args.format,
+    named=bool(args.out),
+  )
   return 0
 
 

@@ -383,3 +383,23 @@ def test_every_fact_now_falls_inside_a_cube() -> None:
   _, gaps = to_tavi_report(_model())
   assert gaps.dimensional_facts == 1
   assert gaps.facts_without_cube == 0
+
+
+def test_explicit_out_path_is_honoured_exactly(tmp_path: Any) -> None:
+  """`-o` with one format writes that path, as it did before --format existed."""
+  from robosystems_xbrl_holon.cli import _write_outputs
+
+  target = tmp_path / "custom-name.json"
+  _write_outputs(_model(), target, "holon", named=True)
+  assert target.exists()
+  assert not (tmp_path / "custom-name.json.holon.jsonld").exists()
+
+
+def test_both_formats_derive_a_shared_stem(tmp_path: Any) -> None:
+  """Two documents from one parse cannot share a name, so the stem is derived."""
+  from robosystems_xbrl_holon.cli import _write_outputs
+
+  _write_outputs(_model(), tmp_path / "acme.holon.jsonld", "both", named=True)
+  assert (tmp_path / "acme.holon.jsonld").exists()
+  assert (tmp_path / "acme.tavi.json").exists()
+  assert (tmp_path / "acme.tavi.gaps.json").exists()
