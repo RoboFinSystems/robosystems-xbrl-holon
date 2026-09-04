@@ -16,6 +16,10 @@ on:
 jobs:
   create-release:
     runs-on: ubuntu-latest
+    # Pushes the version bump to main and creates the release branch. Normally
+    # via ACTIONS_TOKEN; github.token is the fallback, so this needs write.
+    permissions:
+      contents: write
     outputs:
       new_version: ${{ steps.new-version.outputs.new_version }}
       branch_name: ${{ steps.new-version.outputs.branch_name }}
@@ -130,7 +134,7 @@ jobs:
     uses: RoboFinSystems/robosystems/.github/workflows/tag-release.yml@main
     with:
       branch_ref: ${{ needs.create-release.outputs.branch_name }}
-      product_name: 'RoboSystems XBRL Holon'
+      product_name: 'xbrlkit'
       project_kind: 'Python library'
     secrets: inherit
 
@@ -138,6 +142,8 @@ jobs:
     needs: [create-release, create-tag]
     if: always()
     runs-on: ubuntu-latest
+    # Writes only to $GITHUB_STEP_SUMMARY, which needs no token scope at all.
+    permissions: {}
     steps:
       - name: Create summary
         run: |
