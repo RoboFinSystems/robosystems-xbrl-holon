@@ -1,15 +1,21 @@
-"""Command-line interface — a SEC filing to a portable ``holon.jsonld``.
+"""Command-line interface — a SEC filing to a portable report document.
 
     holon build --cik 320193 --accno 0000320193-23-000106   # -> output/<accno>.holon.jsonld
-    holon fetch --ticker NVDA --form 10-K --n 1              # -> output/
+    holon build --cik 320193 --accno … --format tavi        # -> output/<accno>.tavi.json
+    holon fetch --ticker NVDA --form 10-K --n 1             # -> output/
 
 Wires the three layers: ``edgar`` (fetch) -> ``parse`` (Arelle -> XbrlModel) ->
-``serialize`` (XbrlModel -> holon.jsonld).
+``serialize`` (XbrlModel -> holon.jsonld and/or a Tavi compiled model).
+
+``--format tavi`` writes a second sidecar, ``<accession>.tavi.gaps.json``: what
+the filing carries that Project Tavi has nowhere to put. That file is the point
+of the Tavi projection, not a by-product of it.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import tempfile
 from datetime import date
@@ -21,11 +27,14 @@ from .config import Config
 from .edgar import EdgarClient, download_filing
 from .model import FilingMeta, XbrlModel
 from .parse import close, load_model, to_xbrl_model
-from .serialize import to_holon
+from .serialize import to_holon, to_tavi_report
 
-# Generated holons land here by default — a git-tracked folder whose contents are
-# git-ignored (see output/.gitignore). Relative to the working directory.
+# Generated documents land here by default — a git-tracked folder whose contents
+# are git-ignored (see output/.gitignore). Relative to the working directory.
 DEFAULT_OUTPUT_DIR = Path("output")
+
+FORMATS = ("holon", "tavi", "both")
+SUFFIXES = {"holon": ".holon.jsonld", "tavi": ".tavi.json"}
 
 
 def _parse_date(value: str | None) -> date | None:
@@ -37,10 +46,47 @@ def _parse_date(value: str | None) -> date | None:
     return None
 
 
+def _write_outputs(model: XbrlModel, out_path: Path, fmt: str, named: bool) -> None:
+  """Write the requested projection(s) of ``model``.
+
+  A single format with an explicit ``-o`` writes exactly that path, unchanged
+  from before ``--format`` existed. Only ``--format both`` has to derive a stem,
+  because one parse then produces two documents and they cannot share a name.
+  """
+  out_path.parent.mkdir(parents=True, exist_ok=True)
+  stem = out_path.name
+  for suffix in SUFFIXES.values():
+    stem = stem.removesuffix(suffix)
+  exact = out_path if named and fmt != "both" else None
+
+  wanted = ("holon", "tavi") if fmt == "both" else (fmt,)
+  for name in wanted:
+    target = exact or out_path.parent / f"{stem}{SUFFIXES[name]}"
+    if name == "holon":
+      target.write_text(to_holon(model))
+      print(f"wrote {target}")
+    else:
+      document, gaps = to_tavi_report(model)
+      target.write_text(json.dumps(document, indent=2, default=str))
+      gaps_path = out_path.parent / f"{stem}.tavi.gaps.json"
+      gaps_path.write_text(json.dumps(gaps.to_dict(), indent=2, default=str))
+      print(f"wrote {target}")
+      against_model = len(gaps.item_types_without_builtin) + len(
+        gaps.dropped_period_semantics
+      )
+      print(f"wrote {gaps_path}  ({against_model} findings against the model)")
+
+
 def _build_one(
-  client: EdgarClient, cik: str, accession: str, out_path: Path, cache_dir: Path
+  client: EdgarClient,
+  cik: str,
+  accession: str,
+  out_path: Path,
+  cache_dir: Path,
+  fmt: str = "holon",
+  named: bool = False,
 ) -> XbrlModel:
-  """Fetch one filing, parse it, and write its holon to ``out_path``."""
+  """Fetch one filing, parse it, and write the requested projection(s)."""
   ref = client.get_filing_ref(cik, accession)
   info = client.company_info(cik)
   with tempfile.TemporaryDirectory() as tmp:
@@ -62,10 +108,8 @@ def _build_one(
       )
     finally:
       close(mx.modelManager.cntlr)
-  out_path.parent.mkdir(parents=True, exist_ok=True)
-  out_path.write_text(to_holon(model))
-  facts = len(model.facts)
-  print(f"wrote {out_path}  ({facts} facts, {len(model.networks)} networks)")
+  _write_outputs(model, out_path, fmt, named)
+  print(f"  ({len(model.facts)} facts, {len(model.networks)} networks)")
   return model
 
 
@@ -81,10 +125,16 @@ def _config_from_args(args: argparse.Namespace) -> Config:
 def _cmd_build(args: argparse.Namespace) -> int:
   config = _config_from_args(args)
   client = EdgarClient(config=config)
-  out = (
-    Path(args.out) if args.out else DEFAULT_OUTPUT_DIR / f"{args.accno}.holon.jsonld"
+  out = Path(args.out) if args.out else DEFAULT_OUTPUT_DIR / args.accno
+  _build_one(
+    client,
+    args.cik,
+    args.accno,
+    out,
+    config.arelle_cache_dir,
+    args.format,
+    named=bool(args.out),
   )
-  _build_one(client, args.cik, args.accno, out, config.arelle_cache_dir)
   return 0
 
 
@@ -115,8 +165,14 @@ def _cmd_fetch(args: argparse.Namespace) -> int:
   out_dir = Path(args.out)
   out_dir.mkdir(parents=True, exist_ok=True)
   for ref in filings[: args.n]:
-    out = out_dir / f"{ref.accession}.holon.jsonld"
-    _build_one(client, cik, ref.accession, out, config.arelle_cache_dir)
+    _build_one(
+      client,
+      cik,
+      ref.accession,
+      out_dir / ref.accession,
+      config.arelle_cache_dir,
+      args.format,
+    )
   return 0
 
 
@@ -141,6 +197,12 @@ def build_parser() -> argparse.ArgumentParser:
     default=None,
     help="Output path (default: output/<accession>.holon.jsonld).",
   )
+  b.add_argument(
+    "--format",
+    choices=FORMATS,
+    default="holon",
+    help="Projection to write (default holon). 'tavi' also writes a .tavi.gaps.json.",
+  )
   b.set_defaults(func=_cmd_build)
 
   f = sub.add_parser("fetch", help="Fetch N filings for a ticker.")
@@ -154,6 +216,12 @@ def build_parser() -> argparse.ArgumentParser:
     "--out",
     default=str(DEFAULT_OUTPUT_DIR),
     help="Output directory (default: output/).",
+  )
+  f.add_argument(
+    "--format",
+    choices=FORMATS,
+    default="holon",
+    help="Projection to write (default holon). 'tavi' also writes a .tavi.gaps.json.",
   )
   f.set_defaults(func=_cmd_fetch)
 
