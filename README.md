@@ -9,6 +9,7 @@ portable representation you need.
 ```
 EDGAR ──▶ Arelle ──▶ XbrlModel ──┬──▶ holon.jsonld   (RDF / JSON-LD)
                                  ├──▶ Tavi           (compiled model)
+                                 ├──▶ xBRL-JSON      (OIM)
                                  └──▶ …
 ```
 
@@ -28,8 +29,17 @@ is the change that turns a kit into a junk drawer.
 | --- | --- | --- |
 | **holon** (`.holon.jsonld`) | shipped | RDF/JSON-LD, renders in the [Holon Viewer](https://holon.robosystems.ai/) |
 | **Tavi** (`.tavi.json`) | shipped | [Project Tavi](https://www.xbrl.org/Specification/tavi/PWD-2026-09-01/tavi-PWD-2026-09-01.html) compiled model, PWD-2026-09-01 |
-| OIM (xBRL-JSON / xBRL-CSV) | planned | Arelle already emits these; a native writer is a fidelity check on `XbrlModel` |
+| **OIM** (`.oim.json`) | shipped | xBRL-JSON, checked fact-for-fact against Arelle's own writer |
 | property graph / Parquet | planned | see `model.py` |
+
+The OIM projection is the one with a **reference implementation** to check
+against: Arelle's `saveLoadableOIM` writes the same document from the same
+filing. A second writer is redundant as a feature — its value is that every
+difference is a fidelity bug in the parse or the model, and those same bugs are
+otherwise silent in the holon and Tavi outputs, which have nothing to check
+them. Current parity is every fact on 3M FY2024 (3,150) and Boeing FY2024
+(2,688), and all but one on Microsoft FY2024 (1,855 of 1,856); footnotes are
+the one construct the model does not carry.
 
 Tavi is a **public working draft** and its name is explicitly a working title,
 so treat that projection as tracking a moving target. `--format tavi` also

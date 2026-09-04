@@ -27,14 +27,24 @@ from .config import Config
 from .edgar import EdgarClient, download_filing
 from .model import FilingMeta, XbrlModel
 from .parse import close, load_model, to_xbrl_model
-from .serialize import to_holon, to_tavi_report
+from .serialize import to_holon, to_oim_document, to_tavi_report
 
 # Generated documents land here by default — a git-tracked folder whose contents
 # are git-ignored (see output/.gitignore). Relative to the working directory.
 DEFAULT_OUTPUT_DIR = Path("output")
 
-FORMATS = ("holon", "tavi", "both")
-SUFFIXES = {"holon": ".holon.jsonld", "tavi": ".tavi.json"}
+FORMATS = ("holon", "tavi", "oim", "all", "both")
+SUFFIXES = {
+  "holon": ".holon.jsonld",
+  "tavi": ".tavi.json",
+  "oim": ".oim.json",
+}
+# "both" predates the OIM projection and is kept as an alias for the two it
+# originally meant, so an existing invocation keeps writing the same two files.
+FORMAT_SETS = {
+  "both": ("holon", "tavi"),
+  "all": ("holon", "tavi", "oim"),
+}
 
 
 def _parse_date(value: str | None) -> date | None:
@@ -50,20 +60,23 @@ def _write_outputs(model: XbrlModel, out_path: Path, fmt: str, named: bool) -> N
   """Write the requested projection(s) of ``model``.
 
   A single format with an explicit ``-o`` writes exactly that path, unchanged
-  from before ``--format`` existed. Only ``--format both`` has to derive a stem,
-  because one parse then produces two documents and they cannot share a name.
+  from before ``--format`` existed. A multi-format run has to derive a stem,
+  because one parse then produces several documents that cannot share a name.
   """
   out_path.parent.mkdir(parents=True, exist_ok=True)
   stem = out_path.name
   for suffix in SUFFIXES.values():
     stem = stem.removesuffix(suffix)
-  exact = out_path if named and fmt != "both" else None
+  exact = out_path if named and fmt not in FORMAT_SETS else None
 
-  wanted = ("holon", "tavi") if fmt == "both" else (fmt,)
+  wanted = FORMAT_SETS.get(fmt, (fmt,))
   for name in wanted:
     target = exact or out_path.parent / f"{stem}{SUFFIXES[name]}"
     if name == "holon":
       target.write_text(to_holon(model))
+      print(f"wrote {target}")
+    elif name == "oim":
+      target.write_text(json.dumps(to_oim_document(model), indent=2, default=str))
       print(f"wrote {target}")
     else:
       document, gaps = to_tavi_report(model)
@@ -202,7 +215,7 @@ def build_parser() -> argparse.ArgumentParser:
     "--format",
     choices=FORMATS,
     default="holon",
-    help="Projection to write (default holon). 'tavi' also writes a .tavi.gaps.json.",
+    help="Projection: holon | tavi | oim | all (default holon). 'tavi' also writes a .tavi.gaps.json.",
   )
   b.set_defaults(func=_cmd_build)
 
@@ -222,7 +235,7 @@ def build_parser() -> argparse.ArgumentParser:
     "--format",
     choices=FORMATS,
     default="holon",
-    help="Projection to write (default holon). 'tavi' also writes a .tavi.gaps.json.",
+    help="Projection: holon | tavi | oim | all (default holon). 'tavi' also writes a .tavi.gaps.json.",
   )
   f.set_defaults(func=_cmd_fetch)
 
