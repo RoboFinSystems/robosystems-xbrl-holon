@@ -86,6 +86,15 @@ class Concept(BaseModel):
   is_integer: bool = False
   substitution_group: str | None = None
   item_type: str | None = None
+  # Whether facts of this concept are OIM "text facts" — string-derived, and
+  # not one of the DTR no-language item types. This is what decides whether the
+  # OIM language dimension applies, and it is the same line Tavi draws for its
+  # text-fact definition. Neither `item_type` nor the base XSD type answers it:
+  # centralIndexKeyItemType and enumerationSetItemType are both token-derived,
+  # and only the first takes a language. Resolving it requires walking the type
+  # derivation chain against the DTS, so it is captured at parse time rather
+  # than inferred downstream.
+  is_text_fact: bool = False
   pref_label: str | None = None
   labels: list[Label] = Field(default_factory=list)
 
@@ -149,6 +158,13 @@ class XbrlFact(BaseModel):
   numeric_value: float | None = None
   decimals: str | None = None
   value_kind: ValueKind = "numeric"
+  # xsi:nil — the filing reported the fact as *not disclosed*, which is not the
+  # same as an empty string, and which every serialization writes as null.
+  is_nil: bool = False
+  # The fact's xml:lang, which XBRL carries on non-numeric facts. Both OIM and
+  # Tavi have a place for it; the parse previously kept language only on
+  # labels, so every projection was silently dropping it.
+  language: str | None = None
 
 
 class Arc(BaseModel):

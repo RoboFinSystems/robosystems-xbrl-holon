@@ -148,10 +148,12 @@ def to_xbrl_model(
         unit_id=unit_ref,
         entity_cik=norm_cik,
         dims=_make_dims(f.context, mx, concepts, namespaces),
-        value_str=str(f.value) if f.value is not None else None,
+        value_str=_value_str(f),
         numeric_value=numeric_value,
         decimals=(str(f.decimals) if (is_numeric and f.decimals is not None) else None),
         value_kind="numeric" if is_numeric else "text",
+        language=getattr(f, "xmlLang", None),
+        is_nil=bool(getattr(f, "isNil", False)),
       )
     )
 
@@ -242,6 +244,9 @@ def _make_concept(mx: ModelXbrl, concept: Any) -> Concept:
     is_integer=bool(getattr(concept, "isInteger", False)),
     substitution_group=str(subgroup) if subgroup is not None else None,
     item_type=type_qname.localName if type_qname is not None else None,
+    is_text_fact=bool(
+      getattr(getattr(concept, "type", None), "isOimTextFactType", False)
+    ),
     pref_label=pref_label,
     labels=labels,
   )
@@ -455,6 +460,26 @@ def _make_networks(
       )
     )
   return networks
+
+
+def _value_str(fact: object) -> str | None:
+  """The fact's value as text, preferring Arelle's typed value.
+
+  ``xValue`` has XML Schema whitespace processing applied, so a token-typed
+  fact tagged as ``"2024 "`` reads back as ``"2024"``. Raw ``value`` does not,
+  and Arelle's own OIM writer uses ``xValue`` for exactly this reason. Numeric
+  facts keep the raw text: their canonical formatting is decided downstream
+  from ``numeric_value``, and ``xValue`` is a ``Decimal`` whose ``str`` would
+  not match what the filing reported.
+  """
+  value = getattr(fact, "value", None)
+  if value is None:
+    return None
+  if fact.unit is None:  # non-numeric
+    typed = getattr(fact, "xValue", None)
+    if isinstance(typed, str):
+      return typed
+  return str(value)
 
 
 def _classify_arcrole(arcrole: str) -> NetworkKind | None:
