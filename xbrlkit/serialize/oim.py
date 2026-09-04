@@ -13,24 +13,27 @@ or in :class:`~xbrlkit.model.XbrlModel`, and those same bugs are present, silent
 and unverifiable, in the holon and Tavi projections. Writing fact language is
 how the first one was found.
 
-Two conventions differ from the Tavi projection and are easy to get backwards:
-
-- **Periods are dateTimes on the exclusive end**, not date-only. An instant at
-  the close of 2024-12-31 is written ``2025-01-01T00:00:00``; the 2024 calendar
-  year is ``2024-01-01T00:00:00/2025-01-01T00:00:00``. The parse rolls Arelle's
-  next-midnight back by a day into a human-facing date, so this projection rolls
-  it forward again. Tavi instead uses date-only literals, whose own resolution
-  rules already mean end-of-day (see :mod:`.tavi`).
-- **Values are strings**, including numeric ones, and the document declares
-  ``xbrl:canonicalValues``.
+The period, entity and language literals are shared with the Tavi projection
+(see :mod:`._values`): a period is an interval of dateTimes on the exclusive
+end — an instant at the close of 2024-12-31 is ``2025-01-01T00:00:00`` — the
+entity is ``cik:0000066740``, and a language tag is lower case. One convention
+is this projection's own: **values are canonical**, as ``xbrl:canonicalValues``
+declares, so a decimal-typed integer keeps its ``.0`` where Tavi carries the
+lexical value as reported.
 """
 
 from __future__ import annotations
 
 import json
-from datetime import date, timedelta
 
-from ..model import Concept, Period, XbrlModel
+from ..model import Concept, XbrlModel
+from ._values import (
+  CIK_PREFIX,
+  CIK_SCHEME,
+  entity_sqname,
+  language_tag,
+  period_interval,
+)
 
 OIM_DOCUMENT_TYPE = "https://xbrl.org/2021/xbrl-json"
 
@@ -42,9 +45,8 @@ OIM_RESERVED_NAMESPACES: dict[str, str] = {
   "utr": "http://www.xbrl.org/2009/utr",
 }
 
-# The SEC's entity scheme, bound to the prefix Arelle uses for it.
-CIK_PREFIX = "cik"
-CIK_SCHEME = "http://www.sec.gov/CIK"
+# The SEC entity scheme (CIK_PREFIX / CIK_SCHEME), the period literal and the
+# language form are shared with the Tavi projection — see ``_values``.
 
 # Unit measures that mean "no unit" and are therefore left off the fact.
 PURE_MEASURES = frozenset({"xbrli:pure", "pure"})
@@ -93,18 +95,21 @@ def _facts(model: XbrlModel, namespaces: dict[str, str]) -> dict[str, object]:
   prefixes = {uri: prefix for prefix, uri in namespaces.items()}
   periods = {period.id: period for period in model.periods}
   units = {unit.id: unit for unit in model.units}
-  entity = f"{CIK_PREFIX}:{model.entity.cik}"
+  entity = entity_sqname(model.entity.cik)
   facts: dict[str, object] = {}
   concepts = model.concepts
 
   for index, fact in enumerate(model.facts):
     dimensions: dict[str, str] = {"concept": fact.concept_qname}
     if fact.language and _takes_language(concepts.get(fact.concept_qname)):
-      dimensions["language"] = fact.language
+      # xBRL-JSON requires the lower-case form (xbrlje:invalidLanguageCodeCase).
+      # Arelle's own writer emits the filing's mixed case, which its loader
+      # then rejects; this is the one place this projection departs from it.
+      dimensions["language"] = language_tag(fact.language)
     dimensions["entity"] = entity
     period = periods.get(fact.period_id)
     if period is not None:
-      dimensions["period"] = _period(period)
+      dimensions["period"] = period_interval(period)
     if fact.unit_id and fact.unit_id in units:
       measure = units[fact.unit_id].measure
       # A pure unit is equivalent to no unit, and OIM omits the dimension
@@ -185,29 +190,6 @@ def _canonical_enumeration(value: str, prefixes: dict[str, str]) -> str:
   namespace, _, local = value.rpartition("#")
   prefix = prefixes.get(namespace)
   return f"{prefix}:{local}" if prefix and local else value
-
-
-def _period(period: Period) -> str:
-  """A period as an xBRL-JSON dateTime interval.
-
-  The end of a period is exclusive here — the instant *after* the last moment
-  it covers — which is the convention the parse rolled back to a human-facing
-  date. Rolling it forward again is what makes this projection comparable to
-  Arelle's.
-  """
-  if period.period_type == "instant":
-    return _exclusive(period.end or period.start)
-  if period.period_type == "forever":
-    return "0001-01-01T00:00:00/9999-12-31T00:00:00"
-  return f"{_midnight(period.start)}/{_exclusive(period.end)}"
-
-
-def _midnight(value: date | None) -> str:
-  return f"{value.isoformat()}T00:00:00" if value else ""
-
-
-def _exclusive(value: date | None) -> str:
-  return _midnight(value + timedelta(days=1)) if value else ""
 
 
 def _decimals(value: str | None) -> int | None:

@@ -32,20 +32,25 @@ is the change that turns a kit into a junk drawer.
 | **OIM** (`.oim.json`) | shipped | xBRL-JSON, checked fact-for-fact against Arelle's own writer |
 | property graph / Parquet | planned | see `model.py` |
 
-The OIM projection is the one with a **reference implementation** to check
-against: Arelle's `saveLoadableOIM` writes the same document from the same
-filing. A second writer is redundant as a feature — its value is that every
-difference is a fidelity bug in the parse or the model, and those same bugs are
-otherwise silent in the holon and Tavi outputs, which have nothing to check
-them. Current parity is every fact on 3M FY2024 (3,150) and Boeing FY2024
-(2,688), and all but one on Microsoft FY2024 (1,855 of 1,856); footnotes are
-the one construct the model does not carry.
+The OIM projection is the one with a **released reference implementation** to
+check against: Arelle's `saveLoadableOIM` writes the same document from the
+same filing. A second writer is redundant as a feature — its value is that
+every difference is a fidelity bug in the parse or the model, and those same
+bugs are otherwise silent in the holon output, which has nothing to check it.
+Current parity is every fact on 3M FY2024 (3,150) and Boeing FY2024 (2,688),
+and all but one on Microsoft FY2024 (1,855 of 1,856); footnotes are the one
+construct the model does not carry.
 
 Tavi is a **public working draft** and its name is explicitly a working title,
-so treat that projection as tracking a moving target. `--format tavi` also
-writes a `.tavi.gaps.json` sidecar recording what the filing carries that the
-model has nowhere to put — that file is the point of the projection, not a
-by-product of it.
+so treat that projection as tracking a moving target. It has been diffed,
+object class by object class, against the compiled model Arelle's unreleased
+`XbrlModel` plugin ([Arelle PR #2418](https://github.com/Arelle/Arelle/pull/2418))
+writes for 3M FY2024; the two agree on every fact outside that plugin's own
+defects and on every cube. Where the draft left a choice open, the choice and
+its reason are recorded in `SPEC_AMBIGUITIES` and carried in the
+`.tavi.gaps.json` sidecar `--format tavi` writes alongside the document — the
+sidecar also records what the filing carries that the model has nowhere to put,
+and that file is the point of the projection, not a by-product of it.
 
 ## Install
 
