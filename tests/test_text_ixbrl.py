@@ -5,7 +5,7 @@ Covers:
 - Continuation chain resolution, nested continuations included
 - Element extraction from nested ix:nonFraction tags
 - Label derivation from element qnames
-- Filtering (DEI/ECD skip, min word count, dedup)
+- Filtering (DEI/ECD skip, min word count), repeated tags, ix:exclude
 - Splitting a long section into parts
 """
 
@@ -248,20 +248,92 @@ class TestiXBRLParser:
     """
     assert iXBRLParser().parse(html) == []
 
-  def test_deduplicates_same_element(self):
+  def test_same_text_tagged_twice_counts_once(self):
+    """The same table tagged twice with different markup (Smucker's
+    intangibles-acquired table) is one occurrence, not two."""
     html = f"""
     <html><body>
     <ix:nonNumeric contextRef="c-1" name="us-gaap:RevenueTextBlock" id="f-1">
-      First occurrence {_FILLER}
+      <p>Same occurrence {_FILLER}</p>
     </ix:nonNumeric>
     <ix:nonNumeric contextRef="c-2" name="us-gaap:RevenueTextBlock" id="f-2">
-      Second occurrence {_FILLER}
+      <div><span>Same occurrence</span> {_FILLER}</div>
     </ix:nonNumeric>
     </body></html>
     """
     sections = iXBRLParser().parse(html)
     assert len(sections) == 1
-    assert "First occurrence" in sections[0].content
+    assert sections[0].content.count("Same occurrence") == 1
+
+  def test_merges_distinct_occurrences_of_a_concept(self):
+    """A concept tagged more than once — Microsoft's purchase-price table for
+    each of two acquisitions, loanDepot's servicing-assets roll-forward per
+    period — is one section holding every occurrence in document order.
+    Keeping the first alone lost the second table."""
+    html = f"""
+    <html><body>
+    <ix:nonNumeric contextRef="c-1" name="us-gaap:ScheduleOfBusinessAcquisitionsByAcquisitionTextBlock" id="f-1">
+      <p>Nuance purchase price {_FILLER}
+      <ix:nonFraction name="us-gaap:Goodwill" contextRef="c-1">16326</ix:nonFraction></p>
+    </ix:nonNumeric>
+    <p>Other text between the two tables.</p>
+    <ix:nonNumeric contextRef="c-2" name="us-gaap:ScheduleOfBusinessAcquisitionsByAcquisitionTextBlock" id="f-2">
+      <p>Activision purchase price {_FILLER}
+      <ix:nonFraction name="us-gaap:BusinessCombinationConsiderationTransferred1" contextRef="c-2">61800</ix:nonFraction></p>
+    </ix:nonNumeric>
+    </body></html>
+    """
+    sections = iXBRLParser().parse(html)
+    assert len(sections) == 1
+    s = sections[0]
+    assert s.content.index("Nuance purchase price") < s.content.index(
+      "Activision purchase price"
+    )
+    assert "Other text between" not in s.content
+    assert s.xbrl_elements == [
+      "us-gaap:BusinessCombinationConsiderationTransferred1",
+      "us-gaap:Goodwill",
+    ]
+
+  def test_nested_block_of_the_same_name_is_not_repeated(self):
+    html = f"""
+    <html><body>
+    <ix:nonNumeric contextRef="c-1" name="us-gaap:DebtDisclosureTextBlock" id="f-1">
+      <p>Outer debt note {_FILLER}</p>
+      <ix:nonNumeric contextRef="c-2" name="us-gaap:DebtDisclosureTextBlock" id="f-2">
+        <p>Inner repeat {_FILLER}</p>
+      </ix:nonNumeric>
+    </ix:nonNumeric>
+    </body></html>
+    """
+    sections = iXBRLParser().parse(html)
+    assert len(sections) == 1
+    assert sections[0].content.count("Inner repeat") == 1
+
+  def test_drops_ix_exclude_content(self):
+    """``ix:exclude`` marks content inside a tagged block that is not part
+    of the fact — the page header Oracle and Microsoft place inside a policy
+    (32 and 50 per filing). Arelle drops it; so must the section."""
+    html = f"""
+    <html><body>
+    <ix:nonNumeric contextRef="c-1" name="us-gaap:IncomeTaxPolicyTextBlock" id="f-1" continuedAt="f-1-a">
+      <p>Income taxes are accounted for under ASC 740. {_FILLER}</p>
+      <ix:exclude><div><p>80</p><p>Table of Contents</p><p>Index to Financial Statements</p></div></ix:exclude>
+      <p>The second step measures the benefit.</p>
+    </ix:nonNumeric>
+    <ix:continuation id="f-1-a">
+      <ix:exclude><p>81 Table of Contents</p></ix:exclude>
+      <p>Continued policy text after the page break.</p>
+    </ix:continuation>
+    </body></html>
+    """
+    sections = iXBRLParser().parse(html)
+    assert len(sections) == 1
+    content = sections[0].content
+    assert "Table of Contents" not in content
+    assert "Index to Financial Statements" not in content
+    assert "The second step measures the benefit." in content
+    assert "Continued policy text after the page break." in content
 
   def test_multiple_sections(self):
     html = f"""
