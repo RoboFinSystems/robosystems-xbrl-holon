@@ -26,6 +26,12 @@ Continuations nest: a table text block inside a revenue note continues in a
 ``ix:continuation`` that sits physically inside the note's own continuation.
 Every continuation is registered with its offsets, nested or not, and a chain
 appends a link only when no appended link already contains it.
+
+A concept tagged more than once — a purchase-price table per acquisition, a
+roll-forward per period — is one section holding every distinct occurrence
+in document order; keeping the first alone lost the second table. Content
+inside ``ix:exclude`` (the page header some filers place inside a tagged
+block) is not part of the fact and is dropped, as Arelle drops it.
 """
 
 from __future__ import annotations
@@ -152,6 +158,12 @@ class _Block:
 
 _TAG_NAME_END = " \t\r\n/>"
 
+# Content a filer marks as not part of the fact: page headers and footers
+# inside a tagged block. Applied to one section's HTML, never the document.
+_EXCLUDE_RE = re.compile(
+  r"<ix:exclude\b[^>]*>.*?</ix:exclude\s*>", re.IGNORECASE | re.DOTALL
+)
+
 
 def _scan_blocks(html: str, tag: str) -> list[_Block]:
   """Every ``<tag>`` block in document order, nested blocks included.
@@ -222,14 +234,21 @@ class iXBRLParser:  # noqa: N801 — the established name across consumers
     ``ix:continuation`` chain resolved, its numeric facts listed — nested
     ones included: a policy block inside an accounting-policies note is its
     own section as well as part of the note's text, because its continued
-    tail belongs to its own chain and to no other. A section over
-    ``part_size`` is returned as consecutive parts that share the
-    ``section_id`` and carry ``part``/``part_count``.
+    tail belongs to its own chain and to no other. A concept tagged more
+    than once is one section holding every distinct occurrence in document
+    order (the same table tagged twice with different markup counts once);
+    ``ix:exclude`` content is dropped. A section over ``part_size`` is
+    returned as consecutive parts that share the ``section_id`` and carry
+    ``part``/``part_count``.
     """
     continuations = self._build_continuation_map(html)
 
-    sections: list[iXBRLSection] = []
-    seen_ids: set[str] = set()
+    # Per element name, in document order: each distinct occurrence's HTML
+    # and text, the blocks already taken, and the texts already seen.
+    htmls: dict[str, list[str]] = {}
+    texts: dict[str, list[str]] = {}
+    taken: dict[str, list[_Block]] = {}
+    seen: dict[str, set[str]] = {}
 
     for block in _scan_blocks(html, "ix:nonNumeric"):
       name_match = re.search(
@@ -243,10 +262,9 @@ class iXBRLParser:  # noqa: N801 — the established name across consumers
       if element_name.startswith(("dei:", "ecd:")):
         continue
 
-      # Deduplicate (the same element can appear more than once)
-      if element_name in seen_ids:
+      # A block nested in an earlier block of the same name is already in it
+      if any(outer.contains(block) for outer in taken.get(element_name, ())):
         continue
-      seen_ids.add(element_name)
 
       full_html = block.content(html)
       continued_at = _continued_at(block.attrs)
@@ -254,14 +272,25 @@ class iXBRLParser:  # noqa: N801 — the established name across consumers
         full_html += self._resolve_continuation_chain(
           continued_at, continuations, html, covered=[block]
         )
-
-      xbrl_elements = _extract_elements_from_block(full_html)
+      full_html = _EXCLUDE_RE.sub(" ", full_html)
       content = _strip_html(full_html)
 
+      key = " ".join(content.split())
+      if key in seen.setdefault(element_name, set()):
+        continue
+      seen[element_name].add(key)
+      taken.setdefault(element_name, []).append(block)
+      htmls.setdefault(element_name, []).append(full_html)
+      texts.setdefault(element_name, []).append(content)
+
+    sections: list[iXBRLSection] = []
+    for element_name, occurrences in texts.items():
+      content = "\n\n".join(occurrences)
       word_count = len(content.split())
       if word_count < MIN_SECTION_WORDS:
         continue
 
+      xbrl_elements = _extract_elements_from_block("".join(htmls[element_name]))
       section_label = _label_from_element_name(element_name)
       parts = split_text(content, self.part_size)
       for index, part_text in enumerate(parts, start=1):
@@ -281,7 +310,7 @@ class iXBRLParser:  # noqa: N801 — the established name across consumers
     logger.debug(
       "iXBRL parsed: %d disclosure documents (%d sections), %d elements",
       len(sections),
-      len(seen_ids),
+      len(texts),
       sum(s.element_count for s in sections if s.part == 1),
     )
     return sections

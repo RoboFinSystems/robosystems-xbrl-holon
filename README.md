@@ -88,7 +88,7 @@ network — and returns its text as sections:
 
 | Parser | Sections | Notes |
 | --- | --- | --- |
-| `iXBRLParser` | every inline-XBRL text block (notes, policies, tables), with the XBRL element names it contains | `ix:continuation` chains resolved; nested continuations and nested text blocks included |
+| `iXBRLParser` | every inline-XBRL text block (notes, policies, tables), with the XBRL element names it contains | `ix:continuation` chains resolved; nested continuations and nested text blocks included; a concept tagged more than once is one section holding every occurrence; `ix:exclude` page furniture dropped |
 | `NarrativeExtractor` | the 10-K / 10-Q Items — Business, Risk Factors, Cybersecurity, Properties, MD&A, Market Risk | table-of-contents rows and cross-references rejected; a 10-Q's Part I and Part II Items kept apart |
 
 Both render HTML tables as markdown pipe tables and split a long section into
