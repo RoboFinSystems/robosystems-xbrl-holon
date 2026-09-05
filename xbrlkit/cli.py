@@ -2,10 +2,16 @@
 
     xbrlkit build --cik 320193 --accno 0000320193-23-000106  # -> output/<accno>.holon.jsonld
     xbrlkit build --cik 320193 --accno … --format tavi       # -> output/<accno>.tavi.json
+    xbrlkit build --cik 320193 --accno … --format lpg        # -> output/<accno>.lbug
     xbrlkit fetch --ticker NVDA --form 10-K --n 1            # -> output/
 
 Wires the three layers: ``edgar`` (fetch) -> ``parse`` (Arelle -> XbrlModel) ->
-``serialize`` (XbrlModel -> a holon or a Tavi compiled model).
+``serialize`` (XbrlModel -> a holon, a Tavi compiled model, an OIM report, or
+a property-graph database).
+
+``--format lpg`` needs the ``lpg`` extra (``pip install "xbrlkit[lpg]"``) and
+writes the filing as a single-file LadybugDB database with the same tables as
+the RoboSystems ``sec`` graph, text blocks inline.
 
 ``--format tavi`` writes a second sidecar, ``<accession>.tavi.gaps.json``: what
 the filing carries that Project Tavi has nowhere to put. That file is the point
@@ -20,24 +26,32 @@ import sys
 import tempfile
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
 
 from .config import Config
 from .edgar import EdgarClient, download_filing
-from .model import FilingMeta, XbrlModel
+from .model import EntityIdentity, FilingMeta, XbrlModel
 from .parse import close, load_model, to_xbrl_model
-from .serialize import to_holon, to_oim_document, to_tavi_report
+from .serialize import (
+  build_lbug,
+  to_graph_tables,
+  to_holon,
+  to_oim_document,
+  to_tavi_report,
+)
 
 # Generated documents land here by default — a git-tracked folder whose contents
 # are git-ignored (see output/.gitignore). Relative to the working directory.
 DEFAULT_OUTPUT_DIR = Path("output")
 
-FORMATS = ("holon", "tavi", "oim", "all", "both")
+FORMATS = ("holon", "tavi", "oim", "lpg", "all", "both")
 SUFFIXES = {
   "holon": ".holon.jsonld",
   "tavi": ".tavi.json",
   "oim": ".oim.json",
+  "lpg": ".lbug",
 }
 # "both" predates the OIM projection and is kept as an alias for the two it
 # originally meant, so an existing invocation keeps writing the same two files.
@@ -78,6 +92,14 @@ def _write_outputs(model: XbrlModel, out_path: Path, fmt: str, named: bool) -> N
     elif name == "oim":
       target.write_text(json.dumps(to_oim_document(model), indent=2, default=str))
       print(f"wrote {target}")
+    elif name == "lpg":
+      tables = to_graph_tables(model)
+      build_lbug(tables, target)
+      counts = tables.counts()
+      print(
+        f"wrote {target}  ({counts.get('Fact', 0)} facts, "
+        f"{counts.get('Element', 0)} elements, {counts.get('Structure', 0)} structures)"
+      )
     else:
       document, gaps = to_tavi_report(model)
       target.write_text(json.dumps(document, indent=2, default=str))
@@ -106,24 +128,57 @@ def _build_one(
     target = download_filing(client, cik, accession, Path(tmp))
     mx = load_model(target, cache_dir=cache_dir)
     try:
-      filing = FilingMeta(
-        accession=accession,
-        cik=str(int(cik)).zfill(10),
-        form=ref.form or None,
-        filing_date=_parse_date(ref.filing_date),
-      )
-      model = to_xbrl_model(
-        mx,
-        filing,
-        entity_name=info.name,
-        entity_ein=info.ein,
-        entity_ticker=info.ticker,
-      )
+      filing = filing_meta(client.config.sec_base_url, cik, accession, ref, target.name)
+      model = to_xbrl_model(mx, filing, entity=entity_identity(info))
     finally:
       close(mx.modelManager.cntlr)
   _write_outputs(model, out_path, fmt, named)
   print(f"  ({len(model.facts)} facts, {len(model.networks)} networks)")
   return model
+
+
+def filing_meta(
+  sec_base_url: str, cik: str, accession: str, ref: Any, primary_document: str
+) -> FilingMeta:
+  """The :class:`FilingMeta` for one filing from its EDGAR record and the
+  file Arelle loaded. ``report_uri`` is the primary document's Archives URL
+  — the stem the property-graph projection scopes its report-level ids on."""
+  padded = str(int(cik)).zfill(10)
+  report_uri = (
+    f"{sec_base_url}/Archives/edgar/data/{int(cik)}/"
+    f"{accession.replace('-', '')}/{primary_document}"
+  )
+  return FilingMeta(
+    accession=accession,
+    cik=padded,
+    form=ref.form or None,
+    filing_date=_parse_date(ref.filing_date),
+    report_date=_parse_date(getattr(ref, "report_date", None)),
+    acceptance_datetime=getattr(ref, "acceptance_datetime", None) or None,
+    is_inline_xbrl=bool(getattr(ref, "is_inline", True)),
+    primary_document=primary_document,
+    report_uri=report_uri,
+  )
+
+
+def entity_identity(info: Any) -> EntityIdentity:
+  """The :class:`EntityIdentity` carried by an EDGAR submissions header."""
+  return EntityIdentity(
+    cik=info.cik,
+    name=info.name,
+    legal_name=info.name,
+    ein=info.ein,
+    ticker=info.ticker,
+    exchange=getattr(info, "exchange", None),
+    sic=getattr(info, "sic", None),
+    sic_description=getattr(info, "sic_description", None),
+    category=getattr(info, "category", None),
+    state_of_incorporation=getattr(info, "state_of_incorporation", None),
+    fiscal_year_end=getattr(info, "fiscal_year_end", None),
+    entity_type=getattr(info, "entity_type", None),
+    website=getattr(info, "website", None),
+    phone=getattr(info, "phone", None),
+  )
 
 
 def _config_from_args(args: argparse.Namespace) -> Config:
@@ -215,7 +270,7 @@ def build_parser() -> argparse.ArgumentParser:
     "--format",
     choices=FORMATS,
     default="holon",
-    help="Projection: holon | tavi | oim | all (default holon). 'tavi' also writes a .tavi.gaps.json.",
+    help="Projection: holon | tavi | oim | lpg | all (default holon). 'tavi' also writes a .tavi.gaps.json; 'lpg' writes a LadybugDB database and needs the lpg extra.",
   )
   b.set_defaults(func=_cmd_build)
 
@@ -235,7 +290,7 @@ def build_parser() -> argparse.ArgumentParser:
     "--format",
     choices=FORMATS,
     default="holon",
-    help="Projection: holon | tavi | oim | all (default holon). 'tavi' also writes a .tavi.gaps.json.",
+    help="Projection: holon | tavi | oim | lpg | all (default holon). 'tavi' also writes a .tavi.gaps.json; 'lpg' writes a LadybugDB database and needs the lpg extra.",
   )
   f.set_defaults(func=_cmd_fetch)
 

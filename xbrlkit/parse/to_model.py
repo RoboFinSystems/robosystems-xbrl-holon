@@ -31,6 +31,7 @@ from xbrlkit.model import (
   Network,
   NetworkKind,
   Period,
+  Reference,
   Unit,
   XbrlFact,
   XbrlModel,
@@ -64,12 +65,15 @@ def to_xbrl_model(
   entity_name: str | None = None,
   entity_ein: str | None = None,
   entity_ticker: str | None = None,
+  entity: EntityIdentity | None = None,
 ) -> XbrlModel:
   """Convert a loaded ``ModelXbrl`` into the neutral single-filing model.
 
   ``entity_name`` / ``entity_ein`` / ``entity_ticker`` come from the EDGAR
   submissions header (the XBRL instance carries only the CIK); pass them when
-  available so the reporting entity is fully identified.
+  available so the reporting entity is fully identified. ``entity`` carries
+  the whole header at once (its ``cik`` and ``scheme`` are replaced by what
+  the instance says) and wins over the three keyword fields.
   """
   report_uri = filing.accession
   main_cik = _normalize_cik(filing.cik)
@@ -140,6 +144,7 @@ def to_xbrl_model(
       except (ValueError, TypeError):
         numeric_value = None
 
+    raw_value = getattr(f, "value", None)
     facts.append(
       XbrlFact(
         id=fact_id(report_uri, f.md5sum.value),
@@ -147,8 +152,12 @@ def to_xbrl_model(
         period_id=period.id,
         unit_id=unit_ref,
         entity_cik=norm_cik,
+        entity_scheme=scheme,
+        entity_identifier=str(raw_cik),
         dims=_make_dims(f.context, mx, concepts, namespaces),
         value_str=_value_str(f),
+        raw_value=str(raw_value) if raw_value is not None else None,
+        source_hash=_md5(f),
         numeric_value=numeric_value,
         decimals=(str(f.decimals) if (is_numeric and f.decimals is not None) else None),
         value_kind="numeric" if is_numeric else "text",
@@ -167,21 +176,32 @@ def to_xbrl_model(
       "fiscal_period_focus": fiscal_period_focus or filing.fiscal_period_focus,
       "fiscal_year_end_month": (fiscal_year_end_month or filing.fiscal_year_end_month),
       "taxonomy_namespaces": sorted(set(filing.taxonomy_namespaces) | namespaces),
+      "extension_namespace": filing.extension_namespace or _extension_namespace(mx),
     }
   )
 
-  entity = EntityIdentity(
-    cik=main_cik,
-    scheme=entity_scheme or "http://www.sec.gov/CIK",
-    name=entity_name,
-    legal_name=entity_name,
-    ein=entity_ein,
-    ticker=entity_ticker,
-  )
+  scheme_resolved = entity_scheme or "http://www.sec.gov/CIK"
+  if entity is not None:
+    resolved_entity = entity.model_copy(
+      update={
+        "cik": main_cik,
+        "scheme": scheme_resolved,
+        "legal_name": entity.legal_name or entity.name,
+      }
+    )
+  else:
+    resolved_entity = EntityIdentity(
+      cik=main_cik,
+      scheme=scheme_resolved,
+      name=entity_name,
+      legal_name=entity_name,
+      ein=entity_ein,
+      ticker=entity_ticker,
+    )
 
   return XbrlModel(
     filing=updated_filing,
-    entity=entity,
+    entity=resolved_entity,
     concepts=concepts,
     periods=list(periods.values()),
     units=list(units.values()),
@@ -227,6 +247,7 @@ def _make_concept(mx: ModelXbrl, concept: Any) -> Concept:
   subgroup = getattr(concept, "substitutionGroupQname", None)
   type_qname = getattr(concept, "typeQname", None)
   labels, pref_label = _make_labels(mx, concept)
+  references = _make_references(mx, concept)
 
   return Concept(
     qname=str(qname),
@@ -242,8 +263,13 @@ def _make_concept(mx: ModelXbrl, concept: Any) -> Concept:
     is_domain_member=bool(getattr(concept, "isDomainMember", False)),
     is_shares=bool(getattr(concept, "isShares", False)),
     is_integer=bool(getattr(concept, "isInteger", False)),
+    is_fraction=bool(getattr(concept, "isFraction", False)),
     substitution_group=str(subgroup) if subgroup is not None else None,
+    substitution_group_namespace=(
+      getattr(subgroup, "namespaceURI", None) if subgroup is not None else None
+    ),
     item_type=type_qname.localName if type_qname is not None else None,
+    nice_type=getattr(concept, "niceType", None) or None,
     item_type_qname=str(type_qname) if type_qname is not None else None,
     item_type_namespace=(
       getattr(type_qname, "namespaceURI", None) if type_qname is not None else None
@@ -255,7 +281,47 @@ def _make_concept(mx: ModelXbrl, concept: Any) -> Concept:
     ),
     pref_label=pref_label,
     labels=labels,
+    references=references,
   )
+
+
+def _make_references(mx: ModelXbrl, concept: Any) -> list[Reference]:
+  """Collect a concept's reference-linkbase entries, one per reference part."""
+  references: list[Reference] = []
+  rel_set = mx.relationshipSet(XbrlConst.conceptReference)
+  for rel in rel_set.fromModelObject(concept):
+    ref_obj = rel.toModelObject
+    if ref_obj is None:
+      continue
+    role = getattr(ref_obj, "role", None)
+    for part in ref_obj.iterchildren():
+      value = getattr(part, "stringValue", None)
+      if value is None:
+        continue
+      references.append(Reference(value=str(value), role=role))
+  return references
+
+
+def _md5(fact: Any) -> str | None:
+  """Arelle's MD5 of a fact, as a hex string, when it carries one."""
+  digest = getattr(fact, "md5sum", None)
+  value = getattr(digest, "value", None) if digest is not None else None
+  return str(value) if value else None
+
+
+def _extension_namespace(mx: ModelXbrl) -> str | None:
+  """The filer's own taxonomy namespace: the schema that sits in the filing's
+  directory, as opposed to the standard taxonomies fetched by URL."""
+  model_document = getattr(mx, "modelDocument", None)
+  filing_dir = getattr(model_document, "filepathdir", None)
+  if not filing_dir:
+    return None
+  for namespace, docs in (getattr(mx, "namespaceDocs", None) or {}).items():
+    if not docs:
+      continue
+    if getattr(docs[0], "filepathdir", None) == filing_dir:
+      return str(namespace)
+  return None
 
 
 def _make_labels(mx: ModelXbrl, concept: Any) -> tuple[list[Label], str | None]:
@@ -268,7 +334,7 @@ def _make_labels(mx: ModelXbrl, concept: Any) -> tuple[list[Label], str | None]:
     if label_obj is None:
       continue
     role = getattr(label_obj, "role", None)
-    value = getattr(label_obj, "text", None) or ""
+    value = getattr(label_obj, "text", None)
     labels.append(
       Label(
         value=value,
@@ -277,9 +343,9 @@ def _make_labels(mx: ModelXbrl, concept: Any) -> tuple[list[Label], str | None]:
       )
     )
     if role == XbrlConst.standardLabel and pref_label is None:
-      pref_label = value
+      pref_label = value or ""
   if pref_label is None and labels:
-    pref_label = labels[0].value
+    pref_label = labels[0].value or ""
   return labels, pref_label
 
 
@@ -333,13 +399,14 @@ def _make_unit(unit: Any) -> Unit | None:
   """Build a :class:`Unit` from an Arelle ``ModelUnit``."""
   if unit.isSingleMeasure:
     token, uri = _measure_token(unit.measures[0][0])
-    return Unit(id=unit_id(uri), measure=token)
+    return Unit(id=unit_id(uri), measure=token, uri=uri)
   if unit.isDivide:
     num_token, num_uri = _measure_token(unit.measures[0][0])
     den_token, den_uri = _measure_token(unit.measures[1][0])
     return Unit(
       id=unit_id(f"{num_uri}/{den_uri}"),
       measure=f"{num_token}/{den_token}",
+      uri=f"{num_uri}/{den_uri}",
       numerator_uri=num_uri,
       denominator_uri=den_uri,
     )
@@ -464,6 +531,7 @@ def _make_networks(
         definition=_role_definition(mx, role_uri),
         kind=kind,
         arcs=arcs,
+        role_id=_role_id(mx, role_uri),
       )
     )
   return networks
@@ -506,6 +574,15 @@ def _role_definition(mx: ModelXbrl, role_uri: str) -> str | None:
   if not role_types:
     return None
   return getattr(role_types[0], "definition", None)
+
+
+def _role_id(mx: ModelXbrl, role_uri: str) -> str | None:
+  """The ``id`` of the role's ``<link:roleType>`` declaration, if any."""
+  role_types = mx.roleTypes.get(role_uri)
+  if not role_types:
+    return None
+  role_id = getattr(role_types[0], "id", None)
+  return str(role_id) if role_id else None
 
 
 def _to_date(value: Any) -> date | None:

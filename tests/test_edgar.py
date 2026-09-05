@@ -102,3 +102,34 @@ def test_download_filing_404_raises(
 def test_live_aapl_ticker_to_cik() -> None:
   client = EdgarClient()
   assert client.ticker_to_cik("AAPL") == "0000320193"
+
+
+def test_company_info_keeps_edgar_header_values_as_they_come():
+  """EDGAR writes an unknown value as "" as often as null. The platform stores them
+  as they come, except the website, whose fallback chain ends in None."""
+  from xbrlkit.edgar.client import company_info_from_submissions
+
+  info = company_info_from_submissions(
+    "0001341439",
+    {
+      "name": "ORACLE CORP",
+      "ein": "542185193",
+      "tickers": ["ORCL"],
+      "exchanges": ["NYSE"],
+      "sic": "7372",
+      "sicDescription": "Services-Prepackaged Software",
+      "stateOfIncorporation": "",
+      "fiscalYearEnd": "0531",
+      "entityType": "operating",
+      "category": "Large accelerated filer",
+      "website": "",
+      "investorWebsite": "",
+      "phone": "(737) 867-1000",
+    },
+  )
+  assert info.state_of_incorporation == ""
+  assert info.website is None
+  assert (info.ticker, info.exchange, info.phone) == ("ORCL", "NYSE", "(737) 867-1000")
+  assert info.fiscal_year_end == "0531" and info.entity_type == "operating"
+  empty = company_info_from_submissions("0000000001", {})
+  assert empty.name is None and empty.ticker is None and empty.ein is None
