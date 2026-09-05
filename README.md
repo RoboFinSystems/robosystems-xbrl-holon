@@ -76,6 +76,11 @@ write_parquet(tables, Path("out/mmm"))   # nodes/*.parquet, relationships/*.parq
 build_lbug(tables, Path("out/mmm.lbug")) # CREATE TABLE … + COPY FROM, one file
 ```
 
+A host that loads filings through its own Arelle controller — the platform's SEC
+adapter does, for its cache policy — calls `xbrlkit.parse.register_sec_transforms()`
+to get the SEC inline-XBRL transforms this package vendors, instead of carrying the
+EDGAR plugin itself.
+
 ## Text
 
 `xbrlkit.text` reads the filing's primary HTML document — no Arelle, no

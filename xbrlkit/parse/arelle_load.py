@@ -12,6 +12,10 @@ Usage::
     mx = load_model(source)
     model = to_xbrl_model(mx, filing)
     close(mx.modelManager.cntlr)
+
+A host that builds its own Arelle controller (its own cache policy, its own
+timeouts) still needs the SEC inline-XBRL transforms this package vendors;
+:func:`register_sec_transforms` wires them into Arelle on their behalf.
 """
 
 from __future__ import annotations
@@ -94,15 +98,15 @@ def _enable_inline_xbrl(cntlr: Any) -> None:
     PluginManager.addPluginModule("inlineXbrlDocumentSet")
   except Exception:
     pass
-  _register_sec_transforms()
+  register_sec_transforms()
   try:
     PluginManager.reset()
   except Exception:
     pass
 
 
-def _register_sec_transforms() -> None:
-  """Register the SEC inline-XBRL transformation functions.
+def register_sec_transforms() -> None:
+  """Register the SEC inline-XBRL transformation functions with Arelle.
 
   The SEC ``2015-08-31`` transforms (``stateprovnameen``, ``edgarprovcountryen``,
   ``numwordsen``, …) are **not** in standalone ``arelle-release`` — they live in
@@ -113,9 +117,16 @@ def _register_sec_transforms() -> None:
   ``(ixTransformValueError)``.
 
   The plugin publishes its transforms through a ``ModelManager.LoadCustomTransforms``
-  mount point that Arelle doesn't invoke in this headless load, so we register them
+  mount point that Arelle doesn't invoke in a headless load, so they are registered
   directly into the namespace map Arelle resolves against
   (``FunctionIxt.ixtNamespaceFunctions[ns][localName]``, FunctionIxt.py:34).
+
+  :func:`load_model` calls this itself. It is public for hosts that build their
+  own Arelle controller and load through it — the RoboSystems SEC adapter's
+  client, for one — so they register the same registry rather than carrying a
+  copy of the EDGAR plugin. Process-wide and idempotent: the registration lives
+  on Arelle's module, not on a controller, and calling it again is a no-op.
+  Safe to call before any controller exists.
   """
   try:
     from arelle import FunctionIxt
