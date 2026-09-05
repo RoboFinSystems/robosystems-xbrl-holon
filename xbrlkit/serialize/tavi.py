@@ -966,7 +966,7 @@ def _labels(
         {
           "forObject": qname,
           "labelType": label_type,
-          "value": label.value,
+          "value": label.value or "",
           "language": label.language or default_language,
         }
       )

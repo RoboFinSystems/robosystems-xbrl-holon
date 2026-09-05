@@ -30,6 +30,8 @@ class FilingRef:
   filing_date: str
   primary_document: str
   is_inline: bool
+  report_date: str = ""
+  acceptance_datetime: str = ""
 
 
 @dataclass
@@ -40,6 +42,15 @@ class CompanyInfo:
   name: str | None
   ein: str | None
   ticker: str | None
+  exchange: str | None = None
+  sic: str | None = None
+  sic_description: str | None = None
+  category: str | None = None
+  state_of_incorporation: str | None = None
+  fiscal_year_end: str | None = None
+  entity_type: str | None = None
+  website: str | None = None
+  phone: str | None = None
 
 
 class EdgarClient:
@@ -127,6 +138,8 @@ class EdgarClient:
     dates = arrays.get("filingDate") or []
     primary = arrays.get("primaryDocument") or []
     inline = arrays.get("isInlineXBRL") or []
+    report_dates = arrays.get("reportDate") or []
+    accepted = arrays.get("acceptanceDateTime") or []
 
     def at(seq: object, i: int) -> object:
       return seq[i] if isinstance(seq, list) and i < len(seq) else None
@@ -141,6 +154,8 @@ class EdgarClient:
           filing_date=str(at(dates, i) or ""),
           primary_document=str(at(primary, i) or ""),
           is_inline=bool(at(inline, i)),
+          report_date=str(at(report_dates, i) or ""),
+          acceptance_datetime=str(at(accepted, i) or ""),
         )
       )
     return refs
@@ -154,16 +169,12 @@ class EdgarClient:
     """
     padded_cik = f"{int(cik):0>10}"
     main = self._get_submissions(f"CIK{padded_cik}.json")
-    tickers = main.get("tickers") or []
-    ticker = str(tickers[0]) if isinstance(tickers, list) and tickers else None
-    name = main.get("name")
-    ein = main.get("ein")
-    return CompanyInfo(
-      cik=padded_cik,
-      name=str(name) if name else None,
-      ein=str(ein) if ein else None,
-      ticker=ticker,
-    )
+    return company_info_from_submissions(padded_cik, main)
+
+  def submissions(self, cik: str) -> dict[str, object]:
+    """The raw submissions header document for a CIK (``CIK##########.json``)."""
+    padded_cik = f"{int(cik):0>10}"
+    return self._get_submissions(f"CIK{padded_cik}.json")
 
   def get_filing_ref(self, cik: str, accession: str) -> FilingRef:
     """Return the :class:`FilingRef` for one accession.
@@ -184,3 +195,37 @@ class EdgarClient:
       primary_document="",
       is_inline=True,
     )
+
+
+def _first(value: object) -> str | None:
+  if isinstance(value, list) and value:
+    return str(value[0]) if value[0] is not None else None
+  return None
+
+
+def _text(value: object) -> str | None:
+  """A header value as text. EDGAR writes an unknown value as ``""`` as often
+  as ``null``; both are kept as they come, since the platform stores them as
+  they come and a projection should read the same."""
+  return None if value is None else str(value)
+
+
+def company_info_from_submissions(cik: str, main: dict[str, object]) -> CompanyInfo:
+  """Build :class:`CompanyInfo` from a submissions header document."""
+  return CompanyInfo(
+    cik=cik,
+    name=_text(main.get("name")),
+    ein=_text(main.get("ein")) or None,
+    ticker=_first(main.get("tickers")),
+    exchange=_first(main.get("exchanges")),
+    sic=_text(main.get("sic")),
+    sic_description=_text(main.get("sicDescription")),
+    category=_text(main.get("category")),
+    state_of_incorporation=_text(main.get("stateOfIncorporation")),
+    fiscal_year_end=_text(main.get("fiscalYearEnd")),
+    entity_type=_text(main.get("entityType")),
+    # An empty website is unknown, not "": the platform's fallback chain ends in
+    # None for it, where every other empty header value is kept as "".
+    website=_text(main.get("website") or main.get("investorWebsite")) or None,
+    phone=_text(main.get("phone")),
+  )

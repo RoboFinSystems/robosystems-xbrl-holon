@@ -30,7 +30,7 @@ is the change that turns a kit into a junk drawer.
 | **holon** (`.holon.jsonld`) | shipped | RDF/JSON-LD, renders in the [Holon Viewer](https://holon.robosystems.ai/) |
 | **Tavi** (`.tavi.json`) | shipped | [Project Tavi](https://www.xbrl.org/Specification/tavi/PWD-2026-09-01/tavi-PWD-2026-09-01.html) compiled model, PWD-2026-09-01 |
 | **OIM** (`.oim.json`) | shipped | xBRL-JSON, checked fact-for-fact against Arelle's own writer |
-| property graph / Parquet | planned | see `model.py` |
+| **property graph** (`.lbug`, parquet) | shipped | the [RoboSystems](https://robosystems.ai) `sec` graph's tables, ids and DDL, as one LadybugDB file per filing; row-identical to the platform's own processor on a 26-filing corpus |
 
 The OIM projection is the one with a **released reference implementation** to
 check against: Arelle's `saveLoadableOIM` writes the same document from the
@@ -51,6 +51,30 @@ its reason are recorded in `SPEC_AMBIGUITIES` and carried in the
 `.tavi.gaps.json` sidecar `--format tavi` writes alongside the document — the
 sidecar also records what the filing carries that the model has nowhere to put,
 and that file is the point of the projection, not a by-product of it.
+
+## Property graph
+
+`xbrlkit build --format lpg` (with the `lpg` extra: `pip install "xbrlkit[lpg]"`)
+writes the filing as a single-file [LadybugDB](https://github.com/LadybugDB/ladybug)
+database with the tables the RoboSystems `sec` graph is built from — the same
+node labels, relationship types, columns and ids, declared once in
+`xbrlkit.schema` — so Cypher written against the shared graph runs on the file
+and a fact in either is the same row. What the platform adds after projection
+is not in the file: text blocks stay inline in `Fact.value`, and the enrichment
+columns and tables (`canonical_concept`, `canonical_type`, `FactSet`,
+`Classification`) are empty. The projection is checked row for row against the
+platform's own processor on the Filing Ladder's 26-filing corpus; the two
+explained differences are association ids (random on the platform, derived
+from the arc here) and exact duplicate arcs inside Arelle's aggregate
+`XBRL-dimensions` network, which the derived ids collapse.
+
+```python
+from xbrlkit.serialize import to_graph_tables, write_parquet, build_lbug
+
+tables = to_graph_tables(model)          # node and relationship rows, schema order
+write_parquet(tables, Path("out/mmm"))   # nodes/*.parquet, relationships/*.parquet
+build_lbug(tables, Path("out/mmm.lbug")) # CREATE TABLE … + COPY FROM, one file
+```
 
 ## Text
 

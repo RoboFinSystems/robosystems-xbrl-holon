@@ -41,10 +41,28 @@ class FilingMeta(BaseModel):
   fiscal_period_focus: str | None = None
   fiscal_year_end_month: str | None = None
   taxonomy_namespaces: list[str] = Field(default_factory=list)
+  # EDGAR's record of the filing beyond form and date: the period the report
+  # covers, when EDGAR accepted it, whether it is inline XBRL, and the file
+  # Arelle loaded (the inline primary document, or the classic instance).
+  report_date: date | None = None
+  acceptance_datetime: str | None = None
+  is_inline_xbrl: bool = True
+  primary_document: str | None = None
+  # The primary document's EDGAR URL. The property-graph projection scopes
+  # report-level ids (the report, its facts, its dimensions) on it, exactly as
+  # the RoboSystems platform does, so the same filing yields the same ids.
+  report_uri: str | None = None
+  # The filer's own taxonomy namespace — the schema shipped in the filing
+  # package — as distinct from the standard taxonomies it imports.
+  extension_namespace: str | None = None
 
 
 class EntityIdentity(BaseModel):
-  """The reporting entity (the XBRL context entity, resolved to the filer)."""
+  """The reporting entity (the XBRL context entity, resolved to the filer).
+
+  Everything beyond ``cik`` and ``scheme`` comes from the EDGAR submissions
+  header, not the XBRL instance; each is ``None`` when unknown.
+  """
 
   cik: str
   scheme: str = "http://www.sec.gov/CIK"
@@ -52,14 +70,35 @@ class EntityIdentity(BaseModel):
   legal_name: str | None = None
   ein: str | None = None
   ticker: str | None = None
+  exchange: str | None = None
+  sic: str | None = None
+  sic_description: str | None = None
+  category: str | None = None
+  state_of_incorporation: str | None = None
+  fiscal_year_end: str | None = None
+  entity_type: str | None = None
+  website: str | None = None
+  phone: str | None = None
 
 
 class Label(BaseModel):
-  """One label-linkbase entry for a concept (role selects standard/terse/…)."""
+  """One label-linkbase entry for a concept (role selects standard/terse/…).
+
+  ``value`` is ``None`` for an empty label element (a documentation label
+  with no text), which is not the same as an empty string.
+  """
+
+  value: str | None = None
+  role: str | None = None
+  language: str | None = None
+
+
+class Reference(BaseModel):
+  """One part of a reference-linkbase entry for a concept (a Topic, a
+  Paragraph, a URI…), with the reference's role."""
 
   value: str
   role: str | None = None
-  language: str | None = None
 
 
 class Concept(BaseModel):
@@ -84,8 +123,13 @@ class Concept(BaseModel):
   is_domain_member: bool = False
   is_shares: bool = False
   is_integer: bool = False
+  is_fraction: bool = False
   substitution_group: str | None = None
+  substitution_group_namespace: str | None = None
   item_type: str | None = None
+  # Arelle's user-facing type name: hypercubes "Table", dimensions "Axis",
+  # otherwise the item type with "ItemType" removed ("Monetary", "String").
+  nice_type: str | None = None
   # The item type's QName and namespace, so a projection can name it — a
   # taxonomy-defined type (dei:yesNoItemType) becomes a datatype object in Tavi
   # rather than being folded to its base — and the XML Schema simple type it
@@ -107,6 +151,7 @@ class Concept(BaseModel):
   is_text_fact: bool = False
   pref_label: str | None = None
   labels: list[Label] = Field(default_factory=list)
+  references: list[Reference] = Field(default_factory=list)
 
 
 class Period(BaseModel):
@@ -133,10 +178,15 @@ class Period(BaseModel):
 
 
 class Unit(BaseModel):
-  """A unit of measure. ``measure`` is the resolved token (e.g. ``iso4217:USD``)."""
+  """A unit of measure. ``measure`` is the resolved token (e.g. ``iso4217:USD``).
+
+  ``uri`` is the measure as ``namespace#localName`` (``num/den`` for a
+  divided unit) — the content the id is derived from.
+  """
 
   id: str
   measure: str
+  uri: str | None = None
   numerator_uri: str | None = None
   denominator_uri: str | None = None
 
@@ -163,8 +213,17 @@ class XbrlFact(BaseModel):
   period_id: str
   unit_id: str | None = None
   entity_cik: str
+  # The context's entity as written — scheme and identifier — beside the
+  # normalized ``entity_cik``. A subsidiary's context carries its own.
+  entity_scheme: str | None = None
+  entity_identifier: str | None = None
   dims: list[DimQualifier] = Field(default_factory=list)
   value_str: str | None = None
+  # The fact's lexical value exactly as Arelle read it, before XML Schema
+  # whitespace processing; ``value_str`` is the processed form OIM writes.
+  raw_value: str | None = None
+  # Arelle's MD5 of the fact — the platform's report-scoped fact id stem.
+  source_hash: str | None = None
   numeric_value: float | None = None
   decimals: str | None = None
   value_kind: ValueKind = "numeric"
@@ -207,6 +266,9 @@ class Network(BaseModel):
   definition: str | None = None
   kind: NetworkKind
   arcs: list[Arc] = Field(default_factory=list)
+  # The ``id`` of the role's ``<link:roleType>`` in the filer's schema, when
+  # declared; the property-graph projection names the structure by it.
+  role_id: str | None = None
 
 
 class XbrlModel(BaseModel):
