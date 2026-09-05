@@ -236,13 +236,15 @@ def test_sec_ixt_transforms_register():
   # word-numbers) parse to (ixTransformValueError). No network, no model load.
   from arelle import FunctionIxt
 
-  from xbrlkit.parse.arelle_load import (
-    SEC_IXT_NAMESPACE,
-    _register_sec_transforms,
-  )
+  from xbrlkit.parse import register_sec_transforms
+  from xbrlkit.parse.arelle_load import SEC_IXT_NAMESPACE
 
-  _register_sec_transforms()
+  register_sec_transforms()
   registry = FunctionIxt.ixtNamespaceFunctions.get(SEC_IXT_NAMESPACE, {})
   assert "stateprovnameen" in registry
   assert "edgarprovcountryen" in registry
   assert callable(registry["stateprovnameen"])
+  # Public for hosts with their own controller; a second call is a no-op.
+  register_sec_transforms()
+  assert FunctionIxt.ixtNamespaceFunctions[SEC_IXT_NAMESPACE] is not None
+  assert len(FunctionIxt.ixtNamespaceFunctions[SEC_IXT_NAMESPACE]) == len(registry)
