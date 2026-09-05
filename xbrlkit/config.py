@@ -36,11 +36,26 @@ class Config:
   sec_data_url: str = "https://data.sec.gov"
   request_timeout: int = 30
   rate_limit_per_sec: float = 5.0
+  # EDGAR answers a throttled client with an empty 200 as often as a 429;
+  # this is the wait before the one retry either gets.
+  throttle_backoff_s: float = field(
+    default_factory=lambda: float(os.environ.get("XBRLKIT_THROTTLE_BACKOFF", "45"))
+  )
   cache_dir: Path = field(default_factory=_default_cache_dir)
+  # Arelle's DTS fetches: per-fetch timeout, and whether to fetch at all.
+  arelle_timeout: int = field(
+    default_factory=lambda: int(os.environ.get("XBRLKIT_ARELLE_TIMEOUT", "30"))
+  )
+  arelle_offline: bool = field(
+    default_factory=lambda: (
+      os.environ.get("XBRLKIT_ARELLE_OFFLINE", "").lower() in ("1", "true", "yes")
+    )
+  )
 
   @property
   def arelle_cache_dir(self) -> Path:
-    return self.cache_dir / "arelle"
+    override = os.environ.get("XBRLKIT_ARELLE_CACHE_DIR")
+    return Path(override) if override else self.cache_dir / "arelle"
 
   @property
   def headers(self) -> dict[str, str]:

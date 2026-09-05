@@ -1,15 +1,25 @@
 """EdgarClient — a small synchronous SEC EDGAR client.
 
-Mirrors the robosystems SEC adapter's client layer (ticker→CIK resolution,
-submissions pagination, XBRL-zip URL construction) but platform-free: it reads
-all settings from :class:`xbrlkit.config.Config`, uses
+The client layer the RoboSystems SEC adapter runs on: ticker→CIK resolution,
+the submissions header and its pagination, the company-tickers map. Platform-
+free: it reads all settings from :class:`xbrlkit.config.Config`, uses
 ``requests`` synchronously, and throttles every call through a
 :class:`~xbrlkit.edgar.rate_limit.RateLimiter`.
+
+EDGAR's throttle looks two ways — an HTTP 429 (or a 503 in an outage), and an
+empty ``200`` body where JSON was expected. :meth:`EdgarClient._get` treats
+both alike: wait (``Retry-After`` when given, else
+:attr:`Config.throttle_backoff_s`) and retry a bounded number of times, then
+raise :class:`EdgarThrottled`.
 """
 
 from __future__ import annotations
 
+import email.utils
+import logging
+import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 import requests
 
@@ -18,6 +28,16 @@ from xbrlkit.config import CONFIG, Config
 from .rate_limit import RateLimiter
 
 COMPANY_TICKERS_PATH = "/files/company_tickers.json"
+
+logger = logging.getLogger(__name__)
+
+RETRY_STATUSES = (429, 503)
+MAX_RETRIES = 2
+MAX_RETRY_AFTER = 300.0
+
+
+class EdgarThrottled(requests.HTTPError):
+  """EDGAR kept throttling after the bounded retries."""
 
 
 @dataclass
@@ -63,12 +83,49 @@ class EdgarClient:
     self._limiter: RateLimiter = RateLimiter(config.rate_limit_per_sec)
     self._ticker_map: dict[str, str] | None = None
 
-  def _get(self, url: str) -> requests.Response:
-    """Throttled GET that raises on HTTP error."""
-    self._limiter.wait()
-    resp = self._session.get(url, timeout=self.config.request_timeout)
-    resp.raise_for_status()
-    return resp
+  def _get(self, url: str, *, expect_body: bool = True) -> requests.Response:
+    """Spaced GET that rides out EDGAR's throttle and raises on any other
+    HTTP error.
+
+    A 429 / 503 waits for ``Retry-After`` (bounded) and retries; an empty
+    ``200`` body, which is how EDGAR throttles a JSON endpoint, waits
+    :attr:`Config.throttle_backoff_s` and retries. After :data:`MAX_RETRIES`
+    of either, :class:`EdgarThrottled`.
+    """
+    attempt = 0
+    while True:
+      self._limiter.wait()
+      resp = self._session.get(url, timeout=self.config.request_timeout)
+      throttled = resp.status_code in RETRY_STATUSES or (
+        expect_body and resp.status_code == 200 and not resp.content.strip()
+      )
+      if not throttled:
+        resp.raise_for_status()
+        return resp
+      if attempt >= MAX_RETRIES:
+        raise EdgarThrottled(
+          f"EDGAR throttled {url} (HTTP {resp.status_code}, "
+          f"{len(resp.content)} bytes) after {attempt} retries",
+          response=resp,
+        )
+      delay = _retry_after(resp, self.config.throttle_backoff_s)
+      logger.warning(
+        "EDGAR throttled %s (HTTP %s); waiting %.0fs (retry %d/%d)",
+        url,
+        resp.status_code,
+        delay,
+        attempt + 1,
+        MAX_RETRIES,
+      )
+      time.sleep(delay)
+      attempt += 1
+
+  def company_tickers(self) -> dict[str, dict[str, object]]:
+    """The raw ``company_tickers.json`` map — index → ``{cik_str, ticker,
+    title}``, in EDGAR's market-cap order."""
+    url = f"{self.config.sec_base_url}{COMPANY_TICKERS_PATH}"
+    data = self._get(url).json()
+    return data if isinstance(data, dict) else {}
 
   def ticker_to_cik(self, ticker: str) -> str:
     """Resolve a ticker symbol to its zero-padded 10-digit CIK.
@@ -85,10 +142,8 @@ class EdgarClient:
     return cik
 
   def _load_ticker_map(self) -> dict[str, str]:
-    url = f"{self.config.sec_base_url}{COMPANY_TICKERS_PATH}"
-    data = self._get(url).json()
     ticker_map: dict[str, str] = {}
-    for row in data.values():
+    for row in self.company_tickers().values():
       symbol = str(row["ticker"]).upper()
       ticker_map[symbol] = f"{int(row['cik_str']):0>10}"
     return ticker_map
@@ -176,6 +231,48 @@ class EdgarClient:
     padded_cik = f"{int(cik):0>10}"
     return self._get_submissions(f"CIK{padded_cik}.json")
 
+  def complete_submissions(self, cik: str) -> dict[str, object]:
+    """The submissions header with *every* filing merged into ``filings`` —
+    the recent page plus each pagination file, in one flat set of arrays —
+    and a ``_metadata`` block (``totalFilings``, ``lastUpdated``,
+    ``paginationFilesMerged``). The shape a corpus snapshot stores.
+    """
+    padded_cik = f"{int(cik):0>10}"
+    main = self._get_submissions(f"CIK{padded_cik}.json")
+    result: dict[str, object] = {k: v for k, v in main.items() if k != "filings"}
+    filings = main.get("filings")
+    filings = filings if isinstance(filings, dict) else {}
+    recent = filings.get("recent")
+    recent = recent if isinstance(recent, dict) else {}
+    fields = list(recent.keys())
+    merged: dict[str, list[object]] = {
+      name: list(recent.get(name) or []) for name in fields
+    }
+    pages = filings.get("files") or []
+    pages = pages if isinstance(pages, list) else []
+    merged_pages = 0
+    for page_info in pages:
+      name = page_info.get("name") if isinstance(page_info, dict) else None
+      if not name:
+        continue
+      try:
+        page = self._get_submissions(str(name))
+      except requests.RequestException as exc:
+        logger.warning("submissions page %s for CIK %s failed: %s", name, cik, exc)
+        continue
+      for field_name in fields:
+        values = page.get(field_name)
+        if isinstance(values, list):
+          merged[field_name].extend(values)
+      merged_pages += 1
+    result["filings"] = merged
+    result["_metadata"] = {
+      "totalFilings": len(merged.get("accessionNumber", [])),
+      "lastUpdated": datetime.now(timezone.utc).isoformat(),
+      "paginationFilesMerged": merged_pages,
+    }
+    return result
+
   def get_filing_ref(self, cik: str, accession: str) -> FilingRef:
     """Return the :class:`FilingRef` for one accession.
 
@@ -195,6 +292,24 @@ class EdgarClient:
       primary_document="",
       is_inline=True,
     )
+
+
+def _retry_after(resp: requests.Response, default: float) -> float:
+  """The wait a throttled response asks for: ``Retry-After`` as seconds or an
+  HTTP date, else ``default``; never more than :data:`MAX_RETRY_AFTER`."""
+  value = resp.headers.get("Retry-After") if resp.headers is not None else None
+  delay: float | None = None
+  if value:
+    text = str(value).strip()
+    if text.isdigit():
+      delay = float(text)
+    else:
+      parsed = email.utils.parsedate_to_datetime(text) if text else None
+      if parsed is not None:
+        delay = max(0.0, parsed.timestamp() - time.time())
+  if delay is None:
+    delay = default
+  return min(delay, MAX_RETRY_AFTER)
 
 
 def _first(value: object) -> str | None:
