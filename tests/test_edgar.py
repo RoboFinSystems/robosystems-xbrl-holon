@@ -29,7 +29,9 @@ class FakeResponse:
 
   def raise_for_status(self) -> None:
     if self.status_code >= 400:
-      raise AssertionError(f"HTTP {self.status_code}")
+      import requests
+
+      raise requests.HTTPError(f"HTTP {self.status_code}", response=self)  # type: ignore[arg-type]
 
 
 def test_xbrl_zip_url_cik_zero_strip_and_accession_dashes() -> None:
@@ -133,3 +135,100 @@ def test_company_info_keeps_edgar_header_values_as_they_come():
   assert info.fiscal_year_end == "0531" and info.entity_type == "operating"
   empty = company_info_from_submissions("0000000001", {})
   assert empty.name is None and empty.ticker is None and empty.ein is None
+
+
+# ---- throttle policy, company tickers, complete submissions ----------------------
+
+
+class _Response(FakeResponse):
+  def __init__(self, payload=None, status_code=200, content=b"x", headers=None):
+    super().__init__(payload, status_code, content)
+    self.headers = headers or {}
+
+
+def _queued(
+  monkeypatch: pytest.MonkeyPatch, responses: list
+) -> tuple[EdgarClient, list[str]]:
+  from xbrlkit.config import Config
+
+  client = EdgarClient(Config(rate_limit_per_sec=0, throttle_backoff_s=2))
+  urls: list[str] = []
+  queue = list(responses)
+
+  def get(url, timeout=None):
+    urls.append(url)
+    return queue.pop(0)
+
+  monkeypatch.setattr(client._session, "get", get)
+  return client, urls
+
+
+def test_get_waits_out_a_429_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
+  from xbrlkit.edgar import client as client_module
+
+  sleeps: list[float] = []
+  monkeypatch.setattr(client_module.time, "sleep", sleeps.append)
+  client, urls = _queued(
+    monkeypatch,
+    [_Response(status_code=429, headers={"Retry-After": "9"}), _Response({"a": 1})],
+  )
+  assert client._get("https://data.sec.gov/x").json() == {"a": 1}
+  assert sleeps == [9.0] and len(urls) == 2
+
+
+def test_get_treats_an_empty_200_as_a_throttle(monkeypatch: pytest.MonkeyPatch) -> None:
+  from xbrlkit.edgar import client as client_module
+
+  sleeps: list[float] = []
+  monkeypatch.setattr(client_module.time, "sleep", sleeps.append)
+  client, _ = _queued(
+    monkeypatch, [_Response(content=b"  "), _Response({"a": 1}, content=b"{}")]
+  )
+  assert client._get("https://data.sec.gov/x").json() == {"a": 1}
+  assert sleeps == [2.0]  # Config.throttle_backoff_s
+
+
+def test_get_gives_up_after_bounded_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+  from xbrlkit.edgar import EdgarThrottled
+  from xbrlkit.edgar import client as client_module
+
+  monkeypatch.setattr(client_module.time, "sleep", lambda s: None)
+  client, urls = _queued(monkeypatch, [_Response(status_code=503)] * 10)
+  with pytest.raises(EdgarThrottled):
+    client._get("https://data.sec.gov/x")
+  assert len(urls) == client_module.MAX_RETRIES + 1
+
+
+def test_company_tickers_returns_the_raw_map(monkeypatch: pytest.MonkeyPatch) -> None:
+  payload = {"0": {"cik_str": 320193, "ticker": "AAPL", "title": "Apple Inc."}}
+  client, urls = _queued(monkeypatch, [_Response(payload)])
+  assert client.company_tickers() == payload
+  assert urls[0].endswith("/files/company_tickers.json")
+
+
+def test_complete_submissions_merges_every_page(
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  main = {
+    "cik": "320193",
+    "name": "Apple Inc.",
+    "filings": {
+      "recent": {"accessionNumber": ["a3", "a2"], "form": ["10-K", "10-Q"]},
+      "files": [{"name": "CIK0000320193-submissions-001.json"}, {"name": "gone.json"}],
+    },
+  }
+  page = {"accessionNumber": ["a1"], "form": ["10-K"], "extra": ["ignored"]}
+  client, urls = _queued(
+    monkeypatch, [_Response(main), _Response(page), _Response(status_code=404)]
+  )
+
+  merged = client.complete_submissions("320193")
+
+  assert merged["name"] == "Apple Inc."
+  assert merged["filings"] == {
+    "accessionNumber": ["a3", "a2", "a1"],
+    "form": ["10-K", "10-Q", "10-K"],
+  }
+  assert merged["_metadata"]["totalFilings"] == 3
+  assert merged["_metadata"]["paginationFilesMerged"] == 1
+  assert urls[1].endswith("/submissions/CIK0000320193-submissions-001.json")

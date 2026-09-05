@@ -20,6 +20,8 @@ from io import BytesIO
 from pathlib import Path
 from zipfile import ZipFile
 
+import requests
+
 from xbrlkit.config import CONFIG, Config
 
 from .client import EdgarClient
@@ -74,16 +76,14 @@ def download_filing(
   ref = client.get_filing_ref(cik, accession)
   url = _xbrl_zip_url(client.config.sec_base_url, cik, accession)
 
-  client._limiter.wait()
-  resp = client._session.get(url, timeout=client.config.request_timeout)
-  if resp.status_code == 404:
-    raise FileNotFoundError(
-      f"No XBRL zip for accession {accession} (CIK {cik}) at {url}"
-    )
-  resp.raise_for_status()
-
-  if not resp.content:
-    raise ValueError(f"Empty XBRL zip response for {accession} at {url}")
+  try:
+    resp = client._get(url)
+  except requests.HTTPError as exc:
+    if exc.response is not None and exc.response.status_code == 404:
+      raise FileNotFoundError(
+        f"No XBRL zip for accession {accession} (CIK {cik}) at {url}"
+      ) from exc
+    raise
 
   dest_dir.mkdir(parents=True, exist_ok=True)
   with ZipFile(BytesIO(resp.content)) as archive:

@@ -116,7 +116,8 @@ for s in NarrativeExtractor().extract(html, form_type="10-K"):
 pip install xbrlkit
 ```
 
-Exposes the `xbrlkit` CLI (`xbrlkit build …`, `xbrlkit fetch …`, `xbrlkit query …`)
+Exposes the `xbrlkit` CLI (`xbrlkit build …`, `xbrlkit fetch …`, `xbrlkit query …`,
+`xbrlkit cache …`)
 and the library — use this to consume it from another project. Set your SEC
 User-Agent via the environment (see [SEC User-Agent](#sec-user-agent)).
 
@@ -162,6 +163,31 @@ xbrlkit query --in output/0000320193-23-000106.holon.jsonld --element us-gaap:As
 
 From a source checkout, `just` wraps the same CLI as a shorthand:
 `just build 320193 0000320193-23-000106` and `just fetch NVDA`.
+
+## Arelle cache
+
+Arelle resolves a filing's DTS by fetching every schema and linkbase it imports —
+the XBRL core from xbrl.org, the W3C schemas from w3.org, `dei` / `srt` / `ecd` /
+country / currency from xbrl.sec.gov, the us-gaap year from xbrl.fasb.org. A 10-K
+resolves to a few hundred files, and the two smallest hosts throttle a cold cache
+within a few dozen filings. So `load_model` serves the DTS from a persistent cache
+(`~/.cache/xbrlkit/arelle`, or `$XBRLKIT_ARELLE_CACHE_DIR`) in Arelle's own layout,
+spaces its fetches per host, waits out a `Retry-After` on a 429 or 503, and —
+when a document still cannot be resolved — raises `DtsResolutionError` naming the
+URLs rather than returning a filing that parses with holes.
+
+Warm the cache once, or ship it:
+
+```bash
+xbrlkit cache status                          # what the cache holds; exit 1 if unseeded
+xbrlkit cache download --years 2022-2026      # load the standard entry points through Arelle
+xbrlkit cache bundle --out schemas.tar.gz --host www.xbrl.org --host www.w3.org
+xbrlkit cache extract --bundle schemas.tar.gz # seed a container's cache at build time
+```
+
+`XBRLKIT_ARELLE_OFFLINE=1` (or `load_model(..., offline=True)`) never touches the
+network; a miss is then an error, not a fetch. A host that builds its own Arelle
+controller gets the same policy from `xbrlkit.parse.configure_webcache(cntlr, cache_dir)`.
 
 ## View & explore
 

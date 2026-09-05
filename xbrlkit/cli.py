@@ -244,6 +244,69 @@ def _cmd_fetch(args: argparse.Namespace) -> int:
   return 0
 
 
+def _cmd_cache(args: argparse.Namespace) -> int:
+  from .parse import cache as schema_cache
+
+  config = _config_from_args(args)
+  cache_dir = Path(args.cache_dir) if args.cache_dir else config.arelle_cache_dir
+
+  if args.cache_command == "status":
+    report = schema_cache.status(cache_dir, config=config)
+    print(f"cache: {report.cache_dir}")
+    print(f"files: {report.files} ({report.schemas} schemas)")
+    for host, count in sorted(report.by_host.items(), key=lambda kv: -kv[1]):
+      print(f"  {host}: {count}")
+    if report.missing_essentials:
+      print("missing essentials:")
+      for url in report.missing_essentials:
+        print(f"  {url}")
+      return 1
+    print("seeded: yes")
+    return 0
+
+  if args.cache_command == "extract":
+    report = schema_cache.seed(Path(args.bundle), cache_dir, config=config)
+    print(
+      f"extracted {report.bundle} into {report.cache_dir}: "
+      f"{report.written} written, {report.skipped} skipped"
+    )
+    return 0
+
+  if args.cache_command == "bundle":
+    hosts = tuple(args.host) if args.host else None
+    count = schema_cache.bundle(Path(args.out), cache_dir, hosts=hosts, config=config)
+    print(f"packed {count} files from {cache_dir} into {args.out}")
+    return 0
+
+  if args.cache_command == "download":
+    if args.url:
+      urls = list(args.url)
+    else:
+      years = _parse_years(args.years) if args.years else schema_cache.DEFAULT_YEARS
+      urls = schema_cache.entry_points(years)
+    print(f"loading {len(urls)} entry points into {cache_dir}", file=sys.stderr)
+    report = schema_cache.download(urls, cache_dir, config=config)
+    for url in report.loaded:
+      print(f"ok      {url}")
+    for url, reason in report.failed.items():
+      print(f"failed  {url}: {reason}")
+    print(
+      f"{len(report.loaded)} loaded, {len(report.failed)} failed, "
+      f"{report.files_added} files added ({report.files_after} in cache)"
+    )
+    return 1 if report.failed and not report.loaded else 0
+
+  raise ValueError(f"unknown cache command: {args.cache_command}")
+
+
+def _parse_years(text: str) -> tuple[int, ...]:
+  """``2022-2026`` or ``2023,2024`` → a tuple of years."""
+  if "-" in text:
+    start, end = text.split("-", 1)
+    return tuple(range(int(start), int(end) + 1))
+  return tuple(int(part) for part in text.split(",") if part.strip())
+
+
 def build_parser() -> argparse.ArgumentParser:
   parser = argparse.ArgumentParser(
     prog="xbrlkit",
@@ -311,6 +374,42 @@ def build_parser() -> argparse.ArgumentParser:
     help="Restrict to instant / annual-duration / quarterly-duration facts.",
   )
   q.set_defaults(func=_cmd_query)
+
+  c = sub.add_parser(
+    "cache",
+    help="The Arelle schema cache: status | download | extract | bundle.",
+  )
+  cache_common = argparse.ArgumentParser(add_help=False)
+  cache_common.add_argument(
+    "--cache-dir",
+    default=None,
+    help="Cache directory (default: $XBRLKIT_ARELLE_CACHE_DIR or ~/.cache/xbrlkit/arelle).",
+  )
+  cache_sub = c.add_subparsers(dest="cache_command", required=True)
+  cache_sub.add_parser(
+    "status", parents=[cache_common], help="Count the cache and check it is seeded."
+  )
+  d = cache_sub.add_parser(
+    "download",
+    parents=[cache_common],
+    help="Fill the cache by loading the standard entry points (or the given URLs) through Arelle.",
+  )
+  d.add_argument("url", nargs="*", help="Entry-point URLs (default: the standard set).")
+  d.add_argument(
+    "--years", default=None, help="Taxonomy years for the standard set, e.g. 2022-2026."
+  )
+  e = cache_sub.add_parser(
+    "extract", parents=[cache_common], help="Seed the cache from a bundle (tar.gz)."
+  )
+  e.add_argument("--bundle", required=True, help="Bundle path.")
+  bd = cache_sub.add_parser(
+    "bundle", parents=[cache_common], help="Pack the cache as a tar.gz."
+  )
+  bd.add_argument("--out", required=True, help="Output tar.gz path.")
+  bd.add_argument(
+    "--host", action="append", help="Only these hosts (repeatable; default: all)."
+  )
+  c.set_defaults(func=_cmd_cache)
   return parser
 
 
