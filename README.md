@@ -52,6 +52,33 @@ its reason are recorded in `SPEC_AMBIGUITIES` and carried in the
 sidecar also records what the filing carries that the model has nowhere to put,
 and that file is the point of the projection, not a by-product of it.
 
+## Text
+
+`xbrlkit.text` reads the filing's primary HTML document — no Arelle, no
+network — and returns its text as sections:
+
+| Parser | Sections | Notes |
+| --- | --- | --- |
+| `iXBRLParser` | every inline-XBRL text block (notes, policies, tables), with the XBRL element names it contains | `ix:continuation` chains resolved; nested continuations and nested text blocks included |
+| `NarrativeExtractor` | the 10-K / 10-Q Items — Business, Risk Factors, Cybersecurity, Properties, MD&A, Market Risk | table-of-contents rows and cross-references rejected; a 10-Q's Part I and Part II Items kept apart |
+
+Both render HTML tables as markdown pipe tables and split a long section into
+balanced parts at paragraph boundaries (`part`, `part_count`, and a `label`
+like `"MD&A (2/6)"`) instead of truncating it. Measured on a 26-filing corpus
+of 2024–2025 10-Ks and 10-Qs: every text block's full text is carried, where a
+map of outermost continuations alone lost 15–29% of the note text on nine of
+the filings, and every target Item starts at its body heading.
+
+```python
+from xbrlkit.text import iXBRLParser, NarrativeExtractor
+
+html = open("mmm-20241231.htm").read()
+for s in iXBRLParser().parse(html):
+  print(s.section_id, s.label, s.word_count, s.xbrl_elements[:3])
+for s in NarrativeExtractor().extract(html, form_type="10-K"):
+  print(s.section_id, s.label, s.word_count)
+```
+
 ## Install
 
 ### As a package
